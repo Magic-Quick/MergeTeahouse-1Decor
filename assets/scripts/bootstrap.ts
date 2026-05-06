@@ -4,7 +4,6 @@ import { AudioCatalog } from 'db://assets/scripts/audio/audio-catalog';
 import { AudioController } from 'db://assets/scripts/audio/audio-controller';
 import { GameConfig } from 'db://assets/scripts/game/game-config';
 import { DragDropController } from 'db://assets/scripts/game/drag-drop-controller';
-import { RoomItem } from 'db://assets/scripts/game/room-item';
 
 const { ccclass, property } = _decorator;
 
@@ -13,9 +12,11 @@ const { ccclass, property } = _decorator;
  * Вешается на корневую ноду сцены (Canvas).
  *
  * Инициализирует и связывает все системы:
- *   AudioController  → слушает EVT_PLAY_SOUND, воспроизводит клипы
+ *   AudioController    → слушает EVT_PLAY_SOUND, воспроизводит клипы
  *   DragDropController → drag-and-drop предметов (получает камеру через init)
- *   RoomItem[]       → регистрируются в DragDropController
+ *
+ * DraggableItem-ы стоят прямо на сцене и сами знают свои targetWorldPos.
+ * Никакой отдельной регистрации не требуется.
  *
  * TODO (раскомментировать по мере реализации):
  *   ChestController  → тап по шкатулке, спавн предметов
@@ -47,9 +48,6 @@ export class Bootstrap extends Component {
 
     @property({ type: DragDropController, tooltip: 'DragDropController на сцене' })
     dragDropController: DragDropController | null = null;
-
-    @property({ type: [RoomItem], tooltip: 'Все RoomItem в комнате' })
-    roomItems: RoomItem[] = [];
 
     // ─── UI ──────────────────────────────────────────────────────────────────
 
@@ -98,14 +96,10 @@ export class Bootstrap extends Component {
         // Передаём камеру в DragDropController
         if (this.dragDropController && this.camera) {
             this.dragDropController.init(this.camera);
-        }
-
-        // Регистрируем все RoomItem в DragDropController
-        if (this.dragDropController && this.roomItems.length > 0) {
-            for (const item of this.roomItems) {
-                this.dragDropController.registerRoomItem(item);
-            }
-            console.log(`[Bootstrap] Зарегистрировано ${this.roomItems.length} RoomItem`);
+            console.log('[Bootstrap] DragDropController инициализирован');
+        } else {
+            if (!this.dragDropController) console.warn('[Bootstrap] dragDropController не назначен!');
+            if (!this.camera) console.warn('[Bootstrap] camera не назначена!');
         }
 
         // TODO: ChestController

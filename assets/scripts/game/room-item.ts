@@ -1,5 +1,4 @@
 import { _decorator, Component, Sprite, Color, tween, Vec3 } from 'cc';
-import { ItemType } from 'db://assets/scripts/game/game-config';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
 
 const { ccclass, property } = _decorator;
@@ -12,19 +11,13 @@ const { ccclass, property } = _decorator;
  *   • Когда drag-копия подносится в радиус — копия уничтожается,
  *     RoomItem.place() проигрывает вспышку и делает предмет видимым
  *
- * Регистрация в DragDropController выполняется из Bootstrap,
- * чтобы избежать циклической зависимости.
+ * Совпадение определяется только по itemId (имя спрайта).
+ * ItemType убран — каждый предмет встаёт только в своё точное место.
  *
- * ID предмета берётся из имени спрайта (spriteComp.spriteFrame.name).
- * Тип зоны (FURNITURE / WALL) задаётся в инспекторе через выпадающий список.
+ * Регистрация в DragDropController выполняется из Bootstrap.
  */
 @ccclass('RoomItem')
 export class RoomItem extends Component {
-
-    @property({
-        tooltip: 'Тип зоны: "furniture" (пол) или "wall" (стена)',
-    })
-    itemType: string = ItemType.FURNITURE;
 
     @property({
         type: Sprite,
@@ -47,7 +40,6 @@ export class RoomItem extends Component {
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
     onLoad(): void {
-        // Скрываем предмет до момента размещения
         this._setOpacity(0);
     }
 
@@ -55,16 +47,11 @@ export class RoomItem extends Component {
 
     /**
      * Проверяет совместимость drag-копии с этим слотом.
-     * Правила:
-     *   1. Ещё не размещён
-     *   2. Тип зоны совпадает
-     *   3. ID (имя спрайта) совпадает
+     * Единственное правило: ID (имя спрайта) должен совпадать.
      */
     canAccept(item: DraggableItem): boolean {
         if (this.isPlaced) return false;
-        if (item.itemType !== this.itemType) return false;
-        if (item.itemId !== this.itemId) return false;
-        return true;
+        return item.itemId === this.itemId;
     }
 
     /**
@@ -86,13 +73,13 @@ export class RoomItem extends Component {
             return;
         }
 
-        // Проявление + лёгкий «прыжок» масштаба
+        // Лёгкий «прыжок» масштаба
         tween(this.node)
             .to(0.15, { scale: new Vec3(1.15, 1.15, 1) })
             .to(0.15, { scale: new Vec3(1, 1, 1) })
             .start();
 
-        // Вспышка: делаем видимым и мигаем цветом
+        // Проявление + вспышка цвета
         this._setOpacity(255);
         const sprite = this.spriteComp;
         sprite.color = new Color(255, 255, 200, 255);

@@ -1,53 +1,40 @@
-import { _decorator, Component, Node, Camera, Vec2, Vec3, EventTouch, UITransform, input, Input } from 'cc';
+import { _decorator, Component, Node, Camera, Vec2, Vec3, EventTouch, UITransform, input, Input, tween } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import {
     EVT_ITEM_DRAG_START,
     EVT_ITEM_DRAG_END,
-    EVT_ITEM_DROP_ATTEMPT,
     EVT_ITEM_PLACED,
     EVT_ITEM_WRONG_SLOT,
 } from 'db://assets/scripts/common/events';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
-import { RoomItem } from 'db://assets/scripts/game/room-item';
 
 const { ccclass, property } = _decorator;
 
 /**
- * DragDropController — компонент на корневой ноде сцены.
+ * DragDropController — компонент на корневой ноде сцены (Canvas).
  *
- * Паттерн «двойник»:
- *   • RoomItem расставлены в комнате заранее, изначально невидимы
- *   • При выпадении из шкатулки ChestController создаёт drag-копию (DraggableItem)
- *   • Игрок тащит копию; при отпускании контроллер ищет ближайший RoomItem
- *   • Если совпадение — копия уничтожается, RoomItem.place() делает его видимым
- *   • Если промах — копия возвращается на исходную позицию
+ * Упрощённая архитектура (без RoomItem):
+ *   • DraggableItem стоят на сцене в начальных позициях
+ *   • Каждый DraggableItem знает свою targetWorldPos и snapRadius
+ *   • При дропе в радиусе — предмет снапится на targetWorldPos (анимация)
+ *   • При промахе — предмет возвращается на исходную позицию (анимация)
  *
  * Назначение в инспекторе:
- *   camera     — основная камера
- *   dragLayer  — нода-слой для перетаскиваемых объектов (рисуется поверх всего)
- *   snapRadius — радиус захвата слота (world units)
+ *   dragLayer — нода-слой для перетаскиваемых объектов (рисуется поверх всего)
+ *
+ * Камера передаётся из Bootstrap через init().
  */
 @ccclass('DragDropController')
 export class DragDropController extends Component {
 
     /**
      * Drag-layer — пустая нода, расположенная последней в Canvas (рисуется поверх всего).
-     * Назначается из Bootstrap через init() или через инспектор.
-     *
-     * Структура сцены:
-     *   Canvas
-     *     ├── Background
-     *     ├── Room
-     *     ├── UI
-     *     └── DragLayer  ← сюда временно переносится предмет во время drag
+     * Назначается из инспектора.
      */
     @property({ type: Node, tooltip: 'Drag-layer: последняя нода в Canvas, рисуется поверх всего' })
     dragLayer: Node | null = null;
 
-    @property({ tooltip: 'Радиус захвата RoomItem (world units)' })
-    snapRadius: number = 80;
-
-    /** Камера передаётся из Bootstrap через init() — не дублируем @property */
+    /** Камера передаётся из Bootstrap через init() */
     private camera: Camera | null = null;
 
     // ─── Состояние drag ──────────────────────────────────────────────────────
@@ -55,10 +42,8 @@ export class DragDropController extends Component {
     private activeDraggable: DraggableItem | null = null;
     private activeNode: Node | null = null;
     private originalParent: Node | null = null;
-    private originalPosition: Vec3 = new Vec3();
+    private originalWorldPosition: Vec3 = new Vec3();
     private touchOffset: Vec3 = new Vec3();
-
-    private registeredRoomItems: RoomItem[] = [];
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -80,24 +65,10 @@ export class DragDropController extends Component {
 
     /**
      * Передаёт камеру из Bootstrap.
-     * Вызывается один раз в Bootstrap.onLoad() после получения компонента.
+     * Вызывается один раз в Bootstrap.onLoad().
      */
     init(camera: Camera): void {
         this.camera = camera;
-    }
-
-    // ─── Регистрация RoomItem ────────────────────────────────────────────────
-
-    /** Вызывается из RoomItem.onLoad() */
-    registerRoomItem(item: RoomItem): void {
-        if (this.registeredRoomItems.indexOf(item) === -1) {
-            this.registeredRoomItems.push(item);
-        }
-    }
-
-    unregisterRoomItem(item: RoomItem): void {
-        const idx = this.registeredRoomItems.indexOf(item);
-        if (idx !== -1) this.registeredRoomItems.splice(idx, 1);
     }
 
     // ─── Touch handlers ──────────────────────────────────────────────────────
@@ -110,15 +81,16 @@ export class DragDropController extends Component {
         this.activeDraggable = hit;
         this.activeNode = hit.node;
 
+        // Запоминаем исходные данные
         this.originalParent = this.activeNode.parent;
-        this.originalPosition.set(this.activeNode.position);
+        this.originalWorldPosition.set(this.activeNode.worldPosition);
 
         // Смещение от центра ноды до точки касания (чтобы предмет не прыгал)
         Vec3.subtract(this.touchOffset, this.activeNode.worldPosition, worldPos);
 
         // Переносим в drag-layer — рисуется поверх всего
         if (this.dragLayer) {
-            this.activeNode.setParent(this.dragLayer);
+            this.activeNode.setParent(this.dragLayer, true); // true = сохранить world transform
         }
 
         GlobalEventBus.publish({ type: EVT_ITEM_DRAG_START, item: this.activeDraggable });
@@ -139,37 +111,39 @@ export class DragDropController extends Component {
         if (!this.activeDraggable || !this.activeNode) return;
 
         const worldPos = this._touchToWorld(event);
-        const roomItem = this._findNearestRoomItem(worldPos, this.activeDraggable);
+        const item = this.activeDraggable;
 
-        if (roomItem) {
-            GlobalEventBus.publish({
-                type: EVT_ITEM_DROP_ATTEMPT,
-                item: this.activeDraggable,
-                roomItemId: roomItem.itemId,
-            });
+        // Проверяем попадание в радиус целевой позиции
+        const dist = Vec3.distance(item.targetWorldPos, worldPos);
+        const inRadius = dist <= item.snapRadius;
 
-            // Уничтожаем drag-копию, активируем RoomItem
-            roomItem.place();
-            this.activeNode.destroy();
-            this.activeNode = null;
+        if (inRadius && !item.isPlaced) {
+            // Снапим предмет на целевую позицию
+            item.isPlaced = true;
 
-            GlobalEventBus.publish({
-                type: EVT_ITEM_PLACED,
-                item: this.activeDraggable,
-                roomItemId: roomItem.itemId,
-            });
-            console.log(`[DragDropController] Placed: "${this.activeDraggable.itemId}"`);
+            // Возвращаем в исходный родитель перед снапом (чтобы позиция была корректной)
+            if (this.originalParent) {
+                this.activeNode.setParent(this.originalParent, true);
+            }
+
+            // Анимация снапа
+            tween(this.activeNode)
+                .to(0.15, { worldPosition: item.targetWorldPos })
+                .call(() => {
+                    this._playPlaceEffect(this.activeNode!);
+                })
+                .start();
+
+            GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item });
+            console.log(`[DragDropController] Placed: "${item.itemId}" at target`);
         } else {
-            // Промах — возвращаем на место
+            // Промах — возвращаем на исходную позицию
             this._returnToOrigin();
-            GlobalEventBus.publish({
-                type: EVT_ITEM_WRONG_SLOT,
-                item: this.activeDraggable,
-            });
-            console.log(`[DragDropController] Miss: "${this.activeDraggable.itemId}"`);
+            GlobalEventBus.publish({ type: EVT_ITEM_WRONG_SLOT, item });
+            console.log(`[DragDropController] Miss: "${item.itemId}" (dist=${dist.toFixed(0)}, radius=${item.snapRadius})`);
         }
 
-        GlobalEventBus.publish({ type: EVT_ITEM_DRAG_END, item: this.activeDraggable });
+        GlobalEventBus.publish({ type: EVT_ITEM_DRAG_END, item });
         this._clearDragState();
     }
 
@@ -185,25 +159,30 @@ export class DragDropController extends Component {
 
     /** Конвертирует экранную точку касания в мировые координаты */
     private _touchToWorld(event: EventTouch): Vec3 {
-        const loc = event.getUILocation();
+        const loc = event.getLocation(); // экранные координаты (пиксели)
         const out = new Vec3();
         if (this.camera) {
             this.camera.screenToWorld(new Vec3(loc.x, loc.y, 0), out);
+        } else {
+            console.warn('[DragDropController] camera не назначена! Координаты будут (0,0,0)');
         }
         return out;
     }
 
     /**
      * Hit-test: ищет DraggableItem под точкой касания.
-     * Перебирает все активные DraggableItem на сцене.
+     * Перебирает все активные незанятые DraggableItem на сцене.
      */
     private _hitTestDraggable(worldPos: Vec3): DraggableItem | null {
         const candidates = this.node.scene?.getComponentsInChildren(DraggableItem) ?? [];
+        console.log(`[DragDropController] HitTest worldPos=(${worldPos.x.toFixed(0)},${worldPos.y.toFixed(0)}) candidates=${candidates.length}`);
         for (const item of candidates) {
             if (!item.node.active) continue;
+            if (item.isPlaced) continue; // уже размещён — не трогаем
             const uiTransform = item.node.getComponent(UITransform);
             if (!uiTransform) continue;
             const bb = uiTransform.getBoundingBoxToWorld();
+            console.log(`[DragDropController]   "${item.itemId}" bb=(${bb.x.toFixed(0)},${bb.y.toFixed(0)},${bb.width.toFixed(0)}x${bb.height.toFixed(0)})`);
             if (bb.contains(new Vec2(worldPos.x, worldPos.y))) {
                 return item;
             }
@@ -211,31 +190,21 @@ export class DragDropController extends Component {
         return null;
     }
 
-    /**
-     * Ищет ближайший незанятый RoomItem, который может принять данный предмет.
-     * Учитывает snapRadius самого RoomItem (если > 0) или глобальный snapRadius.
-     */
-    private _findNearestRoomItem(worldPos: Vec3, item: DraggableItem): RoomItem | null {
-        let nearest: RoomItem | null = null;
-        let minDist = Infinity;
-
-        for (const roomItem of this.registeredRoomItems) {
-            if (!roomItem.canAccept(item)) continue;
-            const radius = roomItem.snapRadius > 0 ? roomItem.snapRadius : this.snapRadius;
-            const dist = Vec3.distance(roomItem.node.worldPosition, worldPos);
-            if (dist < radius && dist < minDist) {
-                minDist = dist;
-                nearest = roomItem;
-            }
-        }
-        return nearest;
-    }
-
-    /** Возвращает drag-копию на исходную позицию */
+    /** Возвращает drag-копию на исходную позицию с анимацией */
     private _returnToOrigin(): void {
         if (!this.activeNode || !this.originalParent) return;
-        this.activeNode.setParent(this.originalParent);
-        this.activeNode.setPosition(this.originalPosition);
+        this.activeNode.setParent(this.originalParent, true);
+        tween(this.activeNode)
+            .to(0.2, { worldPosition: this.originalWorldPosition })
+            .start();
+    }
+
+    /** Лёгкий эффект «прыжка» при успешном размещении */
+    private _playPlaceEffect(node: Node): void {
+        tween(node)
+            .to(0.1, { scale: new Vec3(1.15, 1.15, 1) })
+            .to(0.1, { scale: new Vec3(1, 1, 1) })
+            .start();
     }
 
     private _clearDragState(): void {

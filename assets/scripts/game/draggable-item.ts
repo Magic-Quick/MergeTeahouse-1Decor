@@ -1,27 +1,22 @@
-import { _decorator, Component, Sprite, SpriteFrame } from 'cc';
-import { ItemType } from 'db://assets/scripts/game/game-config';
+import { _decorator, Component, Sprite, SpriteFrame, Vec3 } from 'cc';
 
 const { ccclass, property } = _decorator;
 
 /**
- * DraggableItem — drag-копия предмета, создаётся при выпадении из шкатулки.
+ * DraggableItem — предмет, который игрок перетаскивает по экрану.
  *
- * ID предмета берётся из имени спрайта (spriteFrame.name), поэтому
- * отдельное поле itemId не нужно — имена спрайтов уникальны.
+ * Упрощённая архитектура (без RoomItem):
+ *   • Нода стоит на сцене в начальной позиции — это и есть целевая позиция
+ *   • В onLoad() запоминает свою world-позицию как targetWorldPos
+ *   • При дропе в радиусе snapRadius от targetWorldPos — предмет снапится на место
+ *   • При промахе — возвращается на исходную позицию
  *
- * Жизненный цикл:
- *   1. ChestController создаёт ноду из префаба и назначает spriteFrame
- *   2. Игрок тащит копию к нужному месту в комнате
- *   3. DragDropController находит RoomItem с совпадающим именем спрайта
- *   4. Копия уничтожается, RoomItem становится видимым
+ * Назначение в инспекторе:
+ *   spriteComp  — Sprite-компонент дочерней ноды
+ *   snapRadius  — радиус захвата (world units)
  */
 @ccclass('DraggableItem')
 export class DraggableItem extends Component {
-
-    @property({
-        tooltip: 'Тип зоны: "furniture" (пол) или "wall" (стена)',
-    })
-    itemType: string = ItemType.FURNITURE;
 
     @property({
         type: Sprite,
@@ -29,9 +24,26 @@ export class DraggableItem extends Component {
     })
     spriteComp: Sprite | null = null;
 
+    @property({
+        tooltip: 'Радиус захвата (world units). При дропе в этом радиусе — снап на место.',
+    })
+    snapRadius: number = 80;
+
+    /** Целевая позиция — запоминается автоматически в onLoad() из начальной позиции ноды */
+    targetWorldPos: Vec3 = new Vec3();
+
+    /** true — предмет уже размещён на своём месте */
+    isPlaced: boolean = false;
+
     /** ID предмета — берётся из имени назначенного спрайта */
     get itemId(): string {
         return this.spriteComp?.spriteFrame?.name ?? '';
+    }
+
+    onLoad(): void {
+        // Запоминаем начальную world-позицию как целевую
+        this.targetWorldPos.set(this.node.worldPosition);
+        console.log(`[DraggableItem] "${this.itemId}" target = ${JSON.stringify(this.targetWorldPos)}`);
     }
 
     /** Назначает спрайт предмету */
