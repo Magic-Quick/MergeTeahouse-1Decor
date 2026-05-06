@@ -74,6 +74,15 @@ export class DragDropController extends Component {
      */
     private missCount: Map<Node, number> = new Map();
 
+    /**
+     * Текущая float-анимация каждого клона ('ItamFloatleft' или 'ItamFloatRight').
+     * При промахе переключается на альтернативную.
+     */
+    private cloneFloatAnim: Map<Node, string> = new Map();
+
+    /** Доступные float-анимации */
+    private static readonly FLOAT_ANIMS = ['ItamFloatleft', 'ItamFloatRight'] as const;
+
     /** Активная drag-копия (та что сейчас тащится) */
     private dragClone: Node | null = null;
     /** Оригинал, которому принадлежит текущая копия */
@@ -200,6 +209,7 @@ export class DragDropController extends Component {
             // Успех: клон летит к цели, исчезает, оригинал появляется
             this.activeClones.delete(clone);
             this.missCount.delete(clone);
+            this.cloneFloatAnim.delete(clone);
             tween(clone)
                 .to(0.15, { worldPosition: original.targetWorldPos })
                 .call(() => {
@@ -217,12 +227,18 @@ export class DragDropController extends Component {
             GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: original });
             console.log(`[DragDropController] Placed: "${original.itemId}"`);
         } else {
-            // Промах: клон остаётся там где его бросили, возобновляем ItamFloat
+            // Промах: клон остаётся там где его бросили, переключаем на альтернативную анимацию
 
-            // Возобновляем анимацию покачивания (была остановлена при drag start)
+            // Переключаем float-анимацию на противоположную (без повтора)
+            const floatAnims = DragDropController.FLOAT_ANIMS;
+            const currentAnim = this.cloneFloatAnim.get(clone) ?? floatAnims[0];
+            const nextAnim = floatAnims.find(a => a !== currentAnim) ?? floatAnims[0];
+            this.cloneFloatAnim.set(clone, nextAnim);
+
             const cloneAnim = clone.getComponent(Animation);
             if (cloneAnim) {
-                cloneAnim.play('ItamFloatleft');
+                cloneAnim.play(nextAnim);
+                console.log(`[DragDropController] Float anim switch: "${nextAnim}" на "${original.itemId}"`);
             }
 
             // Считаем промахи — после 2 запускаем HologrammPulse на оригинале как подсказку
@@ -306,12 +322,15 @@ export class DragDropController extends Component {
             .call(() => {
                 console.log(`[DragDropController] Spawned: "${original.itemId}" — готов к drag`);
 
-                // Запускаем анимацию ItamFloatleft на клоне (покачивание пока ждёт drag).
-                // Анимация изменяет localPosition клона — это нормально пока нет drag.
-                // При старте drag анимация будет остановлена, клон остаётся на месте.
+                // Выбираем рандомную float-анимацию при спавне
+                const floatAnims = DragDropController.FLOAT_ANIMS;
+                const randomAnim = floatAnims[Math.floor(Math.random() * floatAnims.length)];
+                this.cloneFloatAnim.set(clone, randomAnim);
+
                 const cloneAnim = clone.getComponent(Animation);
                 if (cloneAnim) {
-                    cloneAnim.play('ItamFloatleft');
+                    cloneAnim.play(randomAnim);
+                    console.log(`[DragDropController] Float anim: "${randomAnim}" на "${original.itemId}"`);
                 } else {
                     console.warn(`[DragDropController] Animation не найден на клоне "${original.itemId}"`);
                 }
