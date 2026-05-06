@@ -184,23 +184,8 @@
   },
   {
     "__type__": "cc.QuatCurve",
-    "_times": [
-      0
-    ],
-    "_values": [
-      {
-        "__type__": "cc.QuatKeyframeValue",
-        "interpolationMode": 0,
-        "value": {
-          "__type__": "cc.Quat",
-          "x": 0,
-          "y": 0,
-          "z": 0.13052618503570557,
-          "w": 0.9914448857307434
-        },
-        "easingMethod": 0
-      }
-    ],
+    "_times": [],
+    "_values": [],
     "preExtrapolation": 1,
     "postExtrapolation": 1
   },

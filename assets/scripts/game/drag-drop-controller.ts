@@ -29,10 +29,12 @@ const { ccclass, property } = _decorator;
  *   5. При отпускании: если в радиусе оригинала → клон уничтожается, оригинал.reveal()
  *                      если промах → клон остаётся на месте
  *
- * Решение конфликта анимации и drag:
- *   ItamFloat анимирует localPosition клона. При старте drag анимация останавливается,
- *   localPosition сбрасывается в (0,0,0), drag работает через worldPosition.
- *   При промахе анимация возобновляется.
+ * Анимация покачивания:
+ *   ItamFloatleft анимирует Y-позицию дочерней ноды Sprite.
+ *   Поворот (tilt) управляется кодом через tween на eulerAngles.z ноды Sprite.
+ *   При drag: pause() — анимация замирает в текущем кадре.
+ *   При отпускании: resume() — продолжает с того же места.
+ *   При промахе: tween поворота на противоположный угол.
  */
 @ccclass('DragDropController')
 export class DragDropController extends Component {
@@ -47,9 +49,14 @@ export class DragDropController extends Component {
     dragLayer: Node | null = null;
 
     @property({
-        tooltip: 'Длительность плавного перехода клона из анимированной позиции в (0,0,0) при старте drag (сек). 0 — мгновенно.',
+        tooltip: 'Угол наклона предмета при покачивании (градусы). Рандомно ±floatTiltAngle при спавне, меняется при промахе.',
     })
-    snapDuration: number = 0.12;
+    floatTiltAngle: number = 15;
+
+    @property({
+        tooltip: 'Длительность tween поворота при смене наклона (сек)',
+    })
+    tiltDuration: number = 0.3;
 
     /** Камера передаётся из Bootstrap через init() */
     private camera: Camera | null = null;
@@ -75,13 +82,10 @@ export class DragDropController extends Component {
     private missCount: Map<Node, number> = new Map();
 
     /**
-     * Текущая float-анимация каждого клона ('ItamFloatleft' или 'ItamFloatRight').
-     * При промахе переключается на альтернативную.
+     * Текущий угол наклона (tilt) каждого клона в градусах.
+     * +floatTiltAngle или -floatTiltAngle. При промахе меняется знак.
      */
-    private cloneFloatAnim: Map<Node, string> = new Map();
-
-    /** Доступные float-анимации */
-    private static readonly FLOAT_ANIMS = ['ItamFloatleft', 'ItamFloatRight'] as const;
+    private cloneTilt: Map<Node, number> = new Map();
 
     /** Активная drag-копия (та что сейчас тащится) */
     private dragClone: Node | null = null;
@@ -91,11 +95,6 @@ export class DragDropController extends Component {
     private touchOffset: Vec3 = new Vec3();
     /** Идёт ли сейчас drag */
     private isDragging: boolean = false;
-    /**
-     * true — клон выполняет snap-tween (localPosition → 0,0,0).
-     * В этот момент _onTouchMove не двигает клон напрямую.
-     */
-    private isSnappingToDrag: boolean = false;
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -151,19 +150,17 @@ export class DragDropController extends Component {
                 this.dragClone = cloneNode;
                 this.dragOriginal = original;
 
-                // Запоминаем worldPosition клона ДО паузы анимации —
-                // это текущая позиция с учётом анимационного смещения.
+                // Запоминаем worldPosition клона ДО паузы анимации
                 const cloneWorldPos = cloneNode.worldPosition.clone();
 
-                // Паузируем ItamFloat — анимация замирает в текущем кадре,
-                // localPosition НЕ сбрасывается (в отличие от stop()).
+                // Паузируем ItamFloatleft — анимация замирает в текущем кадре,
+                // localPosition Sprite НЕ сбрасывается (в отличие от stop()).
                 const cloneAnim = cloneNode.getComponent(Animation);
                 if (cloneAnim) {
                     cloneAnim.pause();
                 }
 
-                // touchOffset от текущей (анимированной) worldPosition клона.
-                // Клон остаётся там где был — без прыжков.
+                // touchOffset от текущей worldPosition клона (с анимационным смещением)
                 Vec3.subtract(this.touchOffset, cloneWorldPos, worldPos);
 
                 GlobalEventBus.publish({ type: EVT_ITEM_DRAG_START, item: original });
@@ -195,7 +192,6 @@ export class DragDropController extends Component {
         const clone = this.dragClone;
 
         this.isDragging = false;
-        this.isSnappingToDrag = false;
         this.dragClone = null;
         this.dragOriginal = null;
 
@@ -209,7 +205,7 @@ export class DragDropController extends Component {
             // Успех: клон летит к цели, исчезает, оригинал появляется
             this.activeClones.delete(clone);
             this.missCount.delete(clone);
-            this.cloneFloatAnim.delete(clone);
+            this.cloneTilt.delete(clone);
             tween(clone)
                 .to(0.15, { worldPosition: original.targetWorldPos })
                 .call(() => {
@@ -227,24 +223,24 @@ export class DragDropController extends Component {
             GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: original });
             console.log(`[DragDropController] Placed: "${original.itemId}"`);
         } else {
-            // Промах: клон остаётся там где его бросили, переключаем на альтернативную анимацию
+            // Промах: клон остаётся там где его бросили
 
-            // Переключаем float-анимацию на противоположную (без повтора)
-            const floatAnims = DragDropController.FLOAT_ANIMS;
-            const currentAnim = this.cloneFloatAnim.get(clone) ?? floatAnims[0];
-            const nextAnim = floatAnims.find(a => a !== currentAnim) ?? floatAnims[0];
-            this.cloneFloatAnim.set(clone, nextAnim);
+            // Меняем угол наклона на противоположный и анимируем tween поворота
+            const currentTilt = this.cloneTilt.get(clone) ?? this.floatTiltAngle;
+            const nextTilt = -currentTilt;
+            this.cloneTilt.set(clone, nextTilt);
+            this._applyTilt(clone, nextTilt);
 
+            // Возобновляем анимацию покачивания с того же кадра (resume, не play)
             const cloneAnim = clone.getComponent(Animation);
             if (cloneAnim) {
-                cloneAnim.play(nextAnim);
-                console.log(`[DragDropController] Float anim switch: "${nextAnim}" на "${original.itemId}"`);
+                cloneAnim.resume();
             }
 
             // Считаем промахи — после 2 запускаем HologrammPulse на оригинале как подсказку
             const misses = (this.missCount.get(clone) ?? 0) + 1;
             this.missCount.set(clone, misses);
-            console.log(`[DragDropController] Miss #${misses}: "${original.itemId}"`);
+            console.log(`[DragDropController] Miss #${misses}: "${original.itemId}" tilt=${nextTilt}°`);
 
             if (misses >= 2 && !original.isPlaced) {
                 original.playHologramHint();
@@ -258,10 +254,14 @@ export class DragDropController extends Component {
 
     private _onTouchCancel(_event: EventTouch): void {
         if (this.isDragging && this.dragOriginal) {
+            // Возобновляем анимацию при отмене drag
+            if (this.dragClone) {
+                const cloneAnim = this.dragClone.getComponent(Animation);
+                if (cloneAnim) cloneAnim.resume();
+            }
             GlobalEventBus.publish({ type: EVT_ITEM_DRAG_END, item: this.dragOriginal });
         }
         this.isDragging = false;
-        this.isSnappingToDrag = false;
         this.dragClone = null;
         this.dragOriginal = null;
     }
@@ -322,15 +322,17 @@ export class DragDropController extends Component {
             .call(() => {
                 console.log(`[DragDropController] Spawned: "${original.itemId}" — готов к drag`);
 
-                // Выбираем рандомную float-анимацию при спавне
-                const floatAnims = DragDropController.FLOAT_ANIMS;
-                const randomAnim = floatAnims[Math.floor(Math.random() * floatAnims.length)];
-                this.cloneFloatAnim.set(clone, randomAnim);
+                // Рандомный начальный наклон: +floatTiltAngle или -floatTiltAngle
+                const tilt = Math.random() < 0.5 ? this.floatTiltAngle : -this.floatTiltAngle;
+                this.cloneTilt.set(clone, tilt);
 
+                // Применяем наклон через tween на ноде Sprite
+                this._applyTilt(clone, tilt);
+
+                // Запускаем анимацию ItamFloatleft (покачивание Y на Sprite)
                 const cloneAnim = clone.getComponent(Animation);
                 if (cloneAnim) {
-                    cloneAnim.play(randomAnim);
-                    console.log(`[DragDropController] Float anim: "${randomAnim}" на "${original.itemId}"`);
+                    cloneAnim.play('ItamFloatleft');
                 } else {
                     console.warn(`[DragDropController] Animation не найден на клоне "${original.itemId}"`);
                 }
@@ -364,6 +366,19 @@ export class DragDropController extends Component {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Плавно поворачивает ноду Sprite клона на заданный угол (eulerAngles.z).
+     * Анимация ItamFloatleft не трогает rotation корневой ноды — только Sprite.
+     */
+    private _applyTilt(cloneNode: Node, angleDeg: number): void {
+        const spriteNode = cloneNode.getChildByName('Sprite');
+        if (!spriteNode) return;
+        const targetEuler = new Vec3(0, 0, angleDeg);
+        tween(spriteNode)
+            .to(this.tiltDuration, { eulerAngles: targetEuler }, { easing: 'quadOut' })
+            .start();
+    }
 
     /** Конвертирует экранную точку касания в мировые координаты */
     private _touchToWorld(event: EventTouch): Vec3 {
