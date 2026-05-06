@@ -29,15 +29,18 @@
       },
       {
         "__id__": 10
+      },
+      {
+        "__id__": 12
       }
     ],
     "_prefab": {
-      "__id__": 12
+      "__id__": 14
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 54.094,
-      "y": -259.766,
+      "x": 0,
+      "y": 0,
       "z": 0
     },
     "_lrot": {
@@ -239,15 +242,53 @@
     "__prefab": {
       "__id__": 11
     },
-    "itemType": "furniture",
     "spriteComp": {
       "__id__": 5
     },
+    "snapRadius": 80,
     "_id": ""
   },
   {
     "__type__": "cc.CompPrefabInfo",
     "fileId": "536SvBE/lF/IJyRXfv6skz"
+  },
+  {
+    "__type__": "cc.Animation",
+    "_name": "",
+    "_objFlags": 0,
+    "__editorExtras__": {},
+    "node": {
+      "__id__": 1
+    },
+    "_enabled": true,
+    "__prefab": {
+      "__id__": 13
+    },
+    "playOnLoad": false,
+    "_clips": [
+      {
+        "__uuid__": "2a6c0cf1-5e5e-4afc-8d30-788c2b86203f",
+        "__expectedType__": "cc.AnimationClip"
+      },
+      {
+        "__uuid__": "de8377fc-eee6-4cd6-bad6-3318516bfb05",
+        "__expectedType__": "cc.AnimationClip"
+      },
+      {
+        "__uuid__": "d5575388-80ed-405f-9ee2-cb9b131132de",
+        "__expectedType__": "cc.AnimationClip"
+      },
+      {
+        "__uuid__": "ef934a86-c6e0-4fa4-bb72-feaf74a6fc41",
+        "__expectedType__": "cc.AnimationClip"
+      }
+    ],
+    "_defaultClip": null,
+    "_id": ""
+  },
+  {
+    "__type__": "cc.CompPrefabInfo",
+    "fileId": "67r/GMAWFMfZrEfq+813yc"
   },
   {
     "__type__": "cc.PrefabInfo",

@@ -13,17 +13,7 @@ const { ccclass, property } = _decorator;
  *
  * Инициализирует и связывает все системы:
  *   AudioController    → слушает EVT_PLAY_SOUND, воспроизводит клипы
- *   DragDropController → drag-and-drop предметов (получает камеру через init)
- *
- * DraggableItem-ы стоят прямо на сцене и сами знают свои targetWorldPos.
- * Никакой отдельной регистрации не требуется.
- *
- * TODO (раскомментировать по мере реализации):
- *   ChestController  → тап по шкатулке, спавн предметов
- *   GameLoop         → прогресс, EVT_ROOM_READY
- *   ScoreView        → счётчик монет
- *   TutorialView     → голографические силуэты
- *   CTAView          → финальный пекшот
+ *   DragDropController → drag-and-drop предметов (получает камеру и ctaNode через init)
  */
 @ccclass('Bootstrap')
 export class Bootstrap extends Component {
@@ -51,9 +41,6 @@ export class Bootstrap extends Component {
 
     // ─── UI ──────────────────────────────────────────────────────────────────
 
-    @property({ type: Node, tooltip: 'Нода счётчика монет (ScoreView)' })
-    scoreNode: Node | null = null;
-
     @property({ type: Node, tooltip: 'Нода финального пекшота (CTAView)' })
     ctaNode: Node | null = null;
 
@@ -71,7 +58,6 @@ export class Bootstrap extends Component {
     onLoad(): void {
         this._initAudio();
         this._initGame();
-        this._initUI();
         console.log('[Bootstrap] Инициализация завершена');
     }
 
@@ -93,23 +79,13 @@ export class Bootstrap extends Component {
     }
 
     private _initGame(): void {
-        // Передаём камеру в DragDropController
+        // Передаём камеру и ctaNode в DragDropController
         if (this.dragDropController && this.camera) {
-            this.dragDropController.init(this.camera);
+            this.dragDropController.init(this.camera, this.ctaNode);
             console.log('[Bootstrap] DragDropController инициализирован');
         } else {
             if (!this.dragDropController) console.warn('[Bootstrap] dragDropController не назначен!');
             if (!this.camera) console.warn('[Bootstrap] camera не назначена!');
         }
-
-        // TODO: ChestController
-        // TODO: GameLoop
-    }
-
-    private _initUI(): void {
-        if (this.ctaNode) {
-            this.ctaNode.active = false;
-        }
-        // TODO: ScoreView, TutorialView, CTAView
     }
 }

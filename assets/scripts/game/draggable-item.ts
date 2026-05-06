@@ -1,4 +1,4 @@
-import { _decorator, Component, Sprite, SpriteFrame, Vec3 } from 'cc';
+import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation } from 'cc';
 
 const { ccclass, property } = _decorator;
 
@@ -10,6 +10,10 @@ const { ccclass, property } = _decorator;
  *   2. DragDropController.start() вызывает hide() — скрывает оригинал
  *   3. При тапе по боксу DragDropController клонирует ноду и анимирует вылет
  *   4. Когда клон подносится в радиус snapRadius — клон уничтожается, reveal() делает оригинал видимым
+ *
+ * Анимации:
+ *   HologrammPulse — на оригинале, запускается через 5 сек как подсказка
+ *   ItamFloat      — на клоне, запускается когда клон ждёт перетаскивания
  *
  * Назначение в инспекторе:
  *   spriteComp  — Sprite-компонент дочерней ноды
@@ -56,7 +60,36 @@ export class DraggableItem extends Component {
         if (this.isPlaced) return;
         this.isPlaced = true;
         this.node.active = true;
+        // Запускаем анимацию установки предмета
+        const anim = this.node.getComponent(Animation);
+        if (anim) {
+            anim.play('ItemInstall');
+            console.log(`[DraggableItem] "${this.itemId}" — ItemInstall запущена`);
+        }
         console.log(`[DraggableItem] "${this.itemId}" — размещён`);
+    }
+
+    /**
+     * Запускает анимацию HologrammPulse на оригинале как подсказку.
+     * Активирует ноду чтобы анимация была видна.
+     * Вызывается из DragDropController после 2 промахов.
+     */
+    playHologramHint(): void {
+        if (this.isPlaced) return;
+        this.node.active = true;
+        const anim = this.node.getComponent(Animation);
+        if (anim) {
+            anim.play('HologrammPulse');
+            console.log(`[DraggableItem] "${this.itemId}" — HologrammPulse (подсказка)`);
+        }
+    }
+
+    /** Скрывает оригинал и останавливает анимацию подсказки */
+    stopHologramHint(): void {
+        if (this.isPlaced) return;
+        const anim = this.node.getComponent(Animation);
+        if (anim) anim.stop();
+        this.node.active = false;
     }
 
     /** Назначает спрайт предмету */
