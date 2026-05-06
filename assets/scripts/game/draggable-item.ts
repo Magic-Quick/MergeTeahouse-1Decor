@@ -3,13 +3,13 @@ import { _decorator, Component, Sprite, SpriteFrame, Vec3 } from 'cc';
 const { ccclass, property } = _decorator;
 
 /**
- * DraggableItem — предмет, который игрок перетаскивает по экрану.
+ * DraggableItem — «оригинал» предмета, невидимо стоящий на своём месте в комнате.
  *
- * Упрощённая архитектура (без RoomItem):
- *   • Нода стоит на сцене в начальной позиции — это и есть целевая позиция
- *   • В onLoad() запоминает свою world-позицию как targetWorldPos
- *   • При дропе в радиусе snapRadius от targetWorldPos — предмет снапится на место
- *   • При промахе — возвращается на исходную позицию
+ * Жизненный цикл:
+ *   1. onLoad() — запоминает свою world-позицию как targetWorldPos
+ *   2. DragDropController.start() вызывает hide() — скрывает оригинал
+ *   3. При тапе по боксу DragDropController клонирует ноду и анимирует вылет
+ *   4. Когда клон подносится в радиус snapRadius — клон уничтожается, reveal() делает оригинал видимым
  *
  * Назначение в инспекторе:
  *   spriteComp  — Sprite-компонент дочерней ноды
@@ -43,7 +43,20 @@ export class DraggableItem extends Component {
     onLoad(): void {
         // Запоминаем начальную world-позицию как целевую
         this.targetWorldPos.set(this.node.worldPosition);
-        console.log(`[DraggableItem] "${this.itemId}" target = ${JSON.stringify(this.targetWorldPos)}`);
+        console.log(`[DraggableItem] "${this.itemId}" target=(${this.targetWorldPos.x.toFixed(0)},${this.targetWorldPos.y.toFixed(0)})`);
+    }
+
+    /** Скрывает оригинал (вызывается из DragDropController.start()) */
+    hide(): void {
+        this.node.active = false;
+    }
+
+    /** Делает оригинал видимым (вызывается когда drag-копия успешно доставлена) */
+    reveal(): void {
+        if (this.isPlaced) return;
+        this.isPlaced = true;
+        this.node.active = true;
+        console.log(`[DraggableItem] "${this.itemId}" — размещён`);
     }
 
     /** Назначает спрайт предмету */
