@@ -10,6 +10,12 @@ import {
     EVT_ITEM_PLACED,
     EVT_ITEM_WRONG_SLOT,
     EVT_GAME_COMPLETE,
+    EVT_PLAY_SOUND,
+    SOUND_CHEST_TAP,
+    SOUND_ITEM_SPAWN,
+    SOUND_ITEM_PLACED,
+    SOUND_WRONG_SLOT,
+    SOUND_ROOM_COMPLETE,
 } from 'db://assets/scripts/common/events';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
 
@@ -186,6 +192,7 @@ export class DragDropController extends Component {
 
         // Тап по боксу — спавним следующий предмет (без ограничений)
         if (this._hitTestNode(this.boxNode, worldPos)) {
+            GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CHEST_TAP });
             this._spawnNextItem();
         }
     }
@@ -243,6 +250,7 @@ export class DragDropController extends Component {
                 .start();
 
             GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: original });
+            GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ITEM_PLACED });
             console.log(`[DragDropController] Placed: "${original.itemId}"`);
         } else {
             // Промах: клон остаётся там где его бросили
@@ -269,6 +277,7 @@ export class DragDropController extends Component {
             }
 
             GlobalEventBus.publish({ type: EVT_ITEM_WRONG_SLOT, item: original });
+            GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_WRONG_SLOT });
         }
 
         GlobalEventBus.publish({ type: EVT_ITEM_DRAG_END, item: original });
@@ -345,6 +354,9 @@ export class DragDropController extends Component {
 
         console.log(`[DragDropController] Spawning: "${original.itemId}" (${this.currentIndex}/${this.itemSlots.length})`);
 
+        // Звук появления предмета
+        GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ITEM_SPAWN });
+
         tween(clone)
             .to(0.35, { worldPosition: landPos }, { easing: 'backOut' })
             .call(() => {
@@ -382,6 +394,7 @@ export class DragDropController extends Component {
 
         // Публикуем событие завершения игры
         GlobalEventBus.publish({ type: EVT_GAME_COMPLETE });
+        GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ROOM_COMPLETE });
         console.log('[DragDropController] EVT_GAME_COMPLETE опубликовано');
 
         // CTA появляется с задержкой ctaDelay

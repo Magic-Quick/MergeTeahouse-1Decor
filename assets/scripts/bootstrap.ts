@@ -1,7 +1,7 @@
 import { _decorator, Component, Node, Camera } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { AudioCatalog } from 'db://assets/scripts/audio/audio-catalog';
-import { AudioController } from 'db://assets/scripts/audio/audio-controller';
+import { AudioControllerLegacy } from 'db://assets/scripts/audio/audio-controller';
 import { GameConfig } from 'db://assets/scripts/game/game-config';
 import { DragDropController } from 'db://assets/scripts/game/drag-drop-controller';
 import { EVT_GAME_COMPLETE } from 'db://assets/scripts/common/events';
@@ -55,7 +55,7 @@ export class Bootstrap extends Component {
 
     // ─── Приватные системы ───────────────────────────────────────────────────
 
-    private audioController?: AudioController;
+    private audioController?: AudioControllerLegacy;
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ export class Bootstrap extends Component {
     // ─── Инициализация ───────────────────────────────────────────────────────
 
     private _initAudio(): void {
-        this.audioController = new AudioController({
+        this.audioController = new AudioControllerLegacy({
             bus: GlobalEventBus,
             catalog: this.audioCatalog,
             audioSourceParent: this.audioSourceParent,
