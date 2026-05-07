@@ -1,6 +1,7 @@
 import {
     _decorator, Component, Node, Camera, Vec2, Vec3,
     EventTouch, UITransform, input, Input, tween, instantiate, Animation,
+    ParticleSystem2D,
 } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import {
@@ -8,6 +9,7 @@ import {
     EVT_ITEM_DRAG_END,
     EVT_ITEM_PLACED,
     EVT_ITEM_WRONG_SLOT,
+    EVT_GAME_COMPLETE,
 } from 'db://assets/scripts/common/events';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
 
@@ -57,6 +59,11 @@ export class DragDropController extends Component {
         tooltip: 'Длительность tween поворота при смене наклона (сек)',
     })
     tiltDuration: number = 0.3;
+
+    @property({
+        tooltip: 'Задержка перед показом CTA после установки всех предметов (сек)',
+    })
+    ctaDelay: number = 3;
 
     /** Камера передаётся из Bootstrap через init() */
     private camera: Camera | null = null;
@@ -160,6 +167,14 @@ export class DragDropController extends Component {
                     cloneAnim.pause();
                 }
 
+                // Запускаем эмиттер частиц при drag (нода остаётся активной всегда)
+                const particleNode = cloneNode.getChildByName('ParticleDrug');
+                if (particleNode) {
+                    particleNode.active = true;
+                    const ps = particleNode.getComponent(ParticleSystem2D);
+                    if (ps) ps.resetSystem(); // сбрасываем и запускаем эмиссию заново
+                }
+
                 // touchOffset от текущей worldPosition клона (с анимационным смещением)
                 Vec3.subtract(this.touchOffset, cloneWorldPos, worldPos);
 
@@ -194,6 +209,13 @@ export class DragDropController extends Component {
         this.isDragging = false;
         this.dragClone = null;
         this.dragOriginal = null;
+
+        // Останавливаем эмиссию новых частиц — существующие доигрывают цикл
+        const particleNode = clone.getChildByName('ParticleDrug');
+        if (particleNode) {
+            const ps = particleNode.getComponent(ParticleSystem2D);
+            if (ps) ps.stopSystem(); // прекращает создание новых частиц, живые доигрывают
+        }
 
         // Сравниваем позицию клона с targetWorldPos оригинала (оба в world space)
         const clonePos = clone.worldPosition;
@@ -254,10 +276,16 @@ export class DragDropController extends Component {
 
     private _onTouchCancel(_event: EventTouch): void {
         if (this.isDragging && this.dragOriginal) {
-            // Возобновляем анимацию при отмене drag
             if (this.dragClone) {
+                // Возобновляем анимацию при отмене drag
                 const cloneAnim = this.dragClone.getComponent(Animation);
                 if (cloneAnim) cloneAnim.resume();
+                // Останавливаем эмиссию новых частиц — существующие доигрывают
+                const particleNode = this.dragClone.getChildByName('ParticleDrug');
+                if (particleNode) {
+                    const ps = particleNode.getComponent(ParticleSystem2D);
+                    if (ps) ps.stopSystem();
+                }
             }
             GlobalEventBus.publish({ type: EVT_ITEM_DRAG_END, item: this.dragOriginal });
         }
@@ -350,16 +378,20 @@ export class DragDropController extends Component {
 
         if (placed < total) return;
 
-        console.log('[DragDropController] Все предметы размещены! Показываем CTA');
+        console.log('[DragDropController] Все предметы размещены!');
 
+        // Публикуем событие завершения игры
+        GlobalEventBus.publish({ type: EVT_GAME_COMPLETE });
+        console.log('[DragDropController] EVT_GAME_COMPLETE опубликовано');
+
+        // CTA появляется с задержкой ctaDelay
         if (this.ctaNode) {
             const cta = this.ctaNode;
-            // Небольшая задержка чтобы анимация последнего предмета успела отыграть
             this.scheduleOnce(() => {
                 cta.setPosition(0, 0, 0);
                 cta.active = true;
                 console.log('[DragDropController] CTA активирована');
-            }, 0.5);
+            }, this.ctaDelay);
         } else {
             console.warn('[DragDropController] ctaNode не назначена — CTA не появится');
         }

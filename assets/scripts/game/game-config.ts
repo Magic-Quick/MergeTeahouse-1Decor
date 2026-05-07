@@ -11,4 +11,7 @@ export class GameConfig extends Component {
 
     @property({ tooltip: 'Google Play URL' })
     googlePlayUrl: string = 'https://play.google.com/';
+
+    @property({ tooltip: 'Задержка перед показом CTA после установки всех предметов (сек)' })
+    ctaDelay: number = 3;
 }
