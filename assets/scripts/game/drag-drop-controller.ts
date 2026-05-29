@@ -57,6 +57,12 @@ export class DragDropController extends Component {
     dragLayer: Node | null = null;
 
     @property({
+        type: Node,
+        tooltip: 'Fall-layer: нода с UITransform, задающая зону случайного выпадения предметов (Canvas/RoomContainer/Drag-layer/Fall-layer)',
+    })
+    fallLayer: Node | null = null;
+
+    @property({
         tooltip: 'Угол наклона предмета при покачивании (градусы). Рандомно ±floatTiltAngle при спавне, меняется при промахе.',
     })
     floatTiltAngle: number = 15;
@@ -99,6 +105,9 @@ export class DragDropController extends Component {
      * +floatTiltAngle или -floatTiltAngle. При промахе меняется знак.
      */
     private cloneTilt: Map<Node, number> = new Map();
+
+    /** Флаг: анимация BoxOpen уже была проиграна */
+    private _boxOpenPlayed: boolean = false;
 
     /** Активная drag-копия (та что сейчас тащится) */
     private dragClone: Node | null = null;
@@ -193,6 +202,16 @@ export class DragDropController extends Component {
         // Тап по боксу — спавним следующий предмет (без ограничений)
         if (this._hitTestNode(this.boxNode, worldPos)) {
             GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CHEST_TAP });
+
+            // При первом тапе проигрываем анимацию BoxOpen
+            if (!this._boxOpenPlayed && this.boxNode) {
+                this._boxOpenPlayed = true;
+                const boxAnim = this.boxNode.getComponent(Animation);
+                if (boxAnim) {
+                    boxAnim.play('BoxOpen');
+                }
+            }
+
             this._spawnNextItem();
         }
     }
@@ -324,9 +343,14 @@ export class DragDropController extends Component {
 
         const original: DraggableItem = item;
 
+        // Обновляем targetWorldPos перед спавном — на случай если onLoad сработал до
+        // полной инициализации иерархии (prefab-инстансы в Slots-layer)
+        original.node.active = true;
+        original.targetWorldPos.set(original.node.worldPosition);
+        console.log(`[DragDropController] targetWorldPos обновлён: "${original.itemId}" -> (${original.targetWorldPos.x.toFixed(0)},${original.targetWorldPos.y.toFixed(0)})`);
+
         // Клонируем ноду оригинала
         // Оригинал неактивен (node.active=false) — временно активируем для корректного instantiate
-        original.node.active = true;
         const clone = instantiate(original.node);
         original.node.active = false;
         clone.name = `${original.node.name}_clone`;
@@ -344,18 +368,18 @@ export class DragDropController extends Component {
         this.activeClones.set(clone, original);
         this.missCount.set(clone, 0);
 
-        // Конечная позиция — случайная точка выше бокса
-        const spreadX = (Math.random() - 0.5) * 200; // ±100 px
-        const landPos = new Vec3(
-            boxWorldPos.x + spreadX,
-            boxWorldPos.y + 350,
-            boxWorldPos.z,
-        );
+        // Конечная позиция — случайная точка внутри Fall-layer (по UITransform)
+        const landPos = this._randomPosInFallLayer(boxWorldPos);
 
         console.log(`[DragDropController] Spawning: "${original.itemId}" (${this.currentIndex}/${this.itemSlots.length})`);
 
         // Звук появления предмета
         GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ITEM_SPAWN });
+
+        const cloneAnim = clone.getComponent(Animation);
+        if (!cloneAnim) {
+            console.warn(`[DragDropController] Animation не найден на клоне "${original.itemId}"`);
+        }
 
         tween(clone)
             .to(0.35, { worldPosition: landPos }, { easing: 'backOut' })
@@ -369,12 +393,10 @@ export class DragDropController extends Component {
                 // Применяем наклон через tween на ноде Sprite
                 this._applyTilt(clone, tilt);
 
-                // Запускаем анимацию ItamFloatleft (покачивание Y на Sprite)
-                const cloneAnim = clone.getComponent(Animation);
+                // Запускаем анимацию ItamFloatleft (покачивание Y на Sprite).
+                // Анимация теперь содержит только трек Sprite/position — корневая нода не затрагивается.
                 if (cloneAnim) {
                     cloneAnim.play('ItamFloatleft');
-                } else {
-                    console.warn(`[DragDropController] Animation не найден на клоне "${original.itemId}"`);
                 }
             })
             .start();
@@ -411,6 +433,30 @@ export class DragDropController extends Component {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Возвращает случайную точку в world-пространстве внутри UITransform ноды fallLayer.
+     * Если fallLayer не назначен — возвращает fallback (позиция бокса + 350px вверх).
+     */
+    private _randomPosInFallLayer(fallback: Vec3): Vec3 {
+        const node = this.fallLayer;
+        if (!node) {
+            const spreadX = (Math.random() - 0.5) * 200;
+            return new Vec3(fallback.x + spreadX, fallback.y + 350, fallback.z);
+        }
+        const uit = node.getComponent(UITransform);
+        if (!uit) {
+            const spreadX = (Math.random() - 0.5) * 200;
+            return new Vec3(fallback.x + spreadX, fallback.y + 350, fallback.z);
+        }
+        // Получаем world-позицию центра ноды и размеры в world-единицах
+        const worldCenter = node.worldPosition;
+        const w = uit.width  * node.worldScale.x;
+        const h = uit.height * node.worldScale.y;
+        const rx = (Math.random() - 0.5) * w;
+        const ry = (Math.random() - 0.5) * h;
+        return new Vec3(worldCenter.x + rx, worldCenter.y + ry, fallback.z);
+    }
 
     /**
      * Плавно поворачивает ноду Sprite клона на заданный угол (eulerAngles.z).

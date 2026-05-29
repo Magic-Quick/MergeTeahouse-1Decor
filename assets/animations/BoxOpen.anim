@@ -11,7 +11,7 @@
     "speed": 1,
     "wrapMode": 1,
     "enableTrsBlending": false,
-    "_duration": 0,
+    "_duration": 0.08333333333333333,
     "_hash": 500763545,
     "_tracks": [
       {
@@ -66,8 +66,20 @@
   },
   {
     "__type__": "cc.ObjectCurve",
-    "_times": [],
-    "_values": []
+    "_times": [
+      0,
+      0.06666666666666667
+    ],
+    "_values": [
+      {
+        "__uuid__": "20cb114e-dc37-4903-8421-c917c07095e1@f9941",
+        "__expectedType__": "cc.SpriteFrame"
+      },
+      {
+        "__uuid__": "652f1215-bcb7-49cc-9437-381ef24667c3@f9941",
+        "__expectedType__": "cc.SpriteFrame"
+      }
+    ]
   },
   {
     "__type__": "cc.animation.VectorTrack",
@@ -108,8 +120,23 @@
   },
   {
     "__type__": "cc.RealCurve",
-    "_times": [],
-    "_values": [],
+    "_times": [
+      0
+    ],
+    "_values": [
+      {
+        "__type__": "cc.RealKeyframeValue",
+        "interpolationMode": 0,
+        "tangentWeightMode": 0,
+        "value": -7.546000003814697,
+        "rightTangent": 0,
+        "rightTangentWeight": 1,
+        "leftTangent": 0,
+        "leftTangentWeight": 1,
+        "easingMethod": 0,
+        "__editorExtras__": null
+      }
+    ],
     "preExtrapolation": 1,
     "postExtrapolation": 1
   },
@@ -121,8 +148,23 @@
   },
   {
     "__type__": "cc.RealCurve",
-    "_times": [],
-    "_values": [],
+    "_times": [
+      0
+    ],
+    "_values": [
+      {
+        "__type__": "cc.RealKeyframeValue",
+        "interpolationMode": 0,
+        "tangentWeightMode": 0,
+        "value": -789.3790283203125,
+        "rightTangent": 0,
+        "rightTangentWeight": 1,
+        "leftTangent": 0,
+        "leftTangentWeight": 1,
+        "easingMethod": 0,
+        "__editorExtras__": null
+      }
+    ],
     "preExtrapolation": 1,
     "postExtrapolation": 1
   },
@@ -134,8 +176,23 @@
   },
   {
     "__type__": "cc.RealCurve",
-    "_times": [],
-    "_values": [],
+    "_times": [
+      0
+    ],
+    "_values": [
+      {
+        "__type__": "cc.RealKeyframeValue",
+        "interpolationMode": 0,
+        "tangentWeightMode": 0,
+        "value": 0,
+        "rightTangent": 0,
+        "rightTangentWeight": 1,
+        "leftTangent": 0,
+        "leftTangentWeight": 1,
+        "easingMethod": 0,
+        "__editorExtras__": null
+      }
+    ],
     "preExtrapolation": 1,
     "postExtrapolation": 1
   },

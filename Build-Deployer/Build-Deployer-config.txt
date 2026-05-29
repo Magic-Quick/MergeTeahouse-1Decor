@@ -1,0 +1,3 @@
+# Конфигурация для Build-Deployer
+ProjectName=MergeTeahouseС1Decor
+SourceDir=build\super-html

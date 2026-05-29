@@ -39,15 +39,22 @@ export class DraggableItem extends Component {
     /** true — предмет уже размещён на своём месте */
     isPlaced: boolean = false;
 
+    /** true — анимация HologrammPulse уже запущена */
+    private _hologramPlaying: boolean = false;
+
     /** ID предмета — берётся из имени назначенного спрайта */
     get itemId(): string {
         return this.spriteComp?.spriteFrame?.name ?? '';
     }
 
     onLoad(): void {
-        // Запоминаем начальную world-позицию как целевую
-        this.targetWorldPos.set(this.node.worldPosition);
-        console.log(`[DraggableItem] "${this.itemId}" target=(${this.targetWorldPos.x.toFixed(0)},${this.targetWorldPos.y.toFixed(0)})`);
+        // Запоминаем начальную world-позицию как целевую.
+        // Используем scheduleOnce(0) чтобы дождаться полной инициализации иерархии сцены —
+        // в onLoad() prefab-инстансы могут ещё не иметь корректных world-координат.
+        this.scheduleOnce(() => {
+            this.targetWorldPos.set(this.node.worldPosition);
+            console.log(`[DraggableItem] "${this.itemId}" target=(${this.targetWorldPos.x.toFixed(0)},${this.targetWorldPos.y.toFixed(0)})`);
+        }, 0);
     }
 
     /** Скрывает оригинал (вызывается из DragDropController.start()) */
@@ -77,8 +84,11 @@ export class DraggableItem extends Component {
     playHologramHint(): void {
         if (this.isPlaced) return;
         this.node.active = true;
+        // Не перезапускаем если анимация уже играет
+        if (this._hologramPlaying) return;
         const anim = this.node.getComponent(Animation);
         if (anim) {
+            this._hologramPlaying = true;
             anim.play('HologrammPulse');
             console.log(`[DraggableItem] "${this.itemId}" — HologrammPulse (подсказка)`);
         }
@@ -87,6 +97,7 @@ export class DraggableItem extends Component {
     /** Скрывает оригинал и останавливает анимацию подсказки */
     stopHologramHint(): void {
         if (this.isPlaced) return;
+        this._hologramPlaying = false;
         const anim = this.node.getComponent(Animation);
         if (anim) anim.stop();
         this.node.active = false;

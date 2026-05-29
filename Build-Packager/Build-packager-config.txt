@@ -1,0 +1,40 @@
+# Конфигурация для Build-packager
+# Version 1.0.2 (2026-04-24)
+# Измените эти настройки по необходимости
+
+# Имя билда (папка, в которую будут скопированы билды)
+BuildName=Solitaire6С10_Chest2
+
+# Исходная директория, содержащая все билды
+SourceDir=build\super-html
+
+# Директория для вывода результатов
+OutputDir=build
+
+# Сети/платформы для копирования
+# Добавьте + в начале строки чтобы включить сеть
+# Уберите + или поставьте - чтобы исключить сеть
+# Специальные случаи:
+# +smadex - берет файлы из moloco, переименовывает их и добавляет JavaScript код отслеживания
+Networks=[
+    +applovin
+    -mintegral
+    +unity
+    -facebook
+    +liftoff
+    +moloco
+    -smadex
+    -bigo
+    -chartboost
+    -common
+    -gdt
+    -google
+    -ironsource
+    -ironsource2025
+    -kwai
+    -nefta
+    -pangle
+    -snapchat
+    +tiktok
+    -vungle
+]
