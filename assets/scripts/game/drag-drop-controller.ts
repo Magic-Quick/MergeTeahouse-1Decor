@@ -77,6 +77,11 @@ export class DragDropController extends Component {
     })
     ctaDelay: number = 3;
 
+    @property({
+        tooltip: 'Количество неудачных попыток перед появлением голограммы-подсказки (0 = подсказка появляется сразу)',
+    })
+    missesBeforeHint: number = 2;
+
     /** Камера передаётся из Bootstrap через init() */
     private camera: Camera | null = null;
 
@@ -96,7 +101,7 @@ export class DragDropController extends Component {
 
     /**
      * Счётчик промахов для каждого клона.
-     * После 2 промахов запускается HologrammPulse на оригинале.
+     * После missesBeforeHint промахов запускается HologrammPulse на оригинале.
      */
     private missCount: Map<Node, number> = new Map();
 
@@ -128,9 +133,13 @@ export class DragDropController extends Component {
     }
 
     start(): void {
+        this._repairItemSlotsIfNeeded();
+
         // Скрываем все оригиналы — они ждут своих drag-копий
         for (const item of this.itemSlots) {
-            item.hide();
+            if (this._isValidItemSlot(item)) {
+                item.hide();
+            }
         }
         // Скрываем CTA
         if (this.ctaNode) {
@@ -261,8 +270,10 @@ export class DragDropController extends Component {
                     // Останавливаем HologrammPulse если он играл
                     original.stopHologramHint();
                     original.reveal(); // isPlaced = true здесь, node.active = true
-                    const origScale = original.node.scale.clone();
-                    this._playPlaceEffect(original.node, origScale);
+                    if (original.node && original.node.isValid) {
+                        const origScale = original.node.scale.clone();
+                        this._playPlaceEffect(original.node, origScale);
+                    }
                     // Проверяем завершение ПОСЛЕ reveal() — теперь isPlaced корректен
                     this._checkCompletion();
                 })
@@ -286,12 +297,12 @@ export class DragDropController extends Component {
                 cloneAnim.resume();
             }
 
-            // Считаем промахи — после 2 запускаем HologrammPulse на оригинале как подсказку
+            // Считаем промахи — запускаем HologrammPulse на оригинале как подсказку
             const misses = (this.missCount.get(clone) ?? 0) + 1;
             this.missCount.set(clone, misses);
             console.log(`[DragDropController] Miss #${misses}: "${original.itemId}" tilt=${nextTilt}°`);
 
-            if (misses >= 2 && !original.isPlaced) {
+            if (misses >= this.missesBeforeHint && !original.isPlaced) {
                 original.playHologramHint();
             }
 
@@ -330,6 +341,10 @@ export class DragDropController extends Component {
         while (this.currentIndex < this.itemSlots.length) {
             const candidate = this.itemSlots[this.currentIndex];
             this.currentIndex++;
+            if (!candidate || !candidate.node || !candidate.node.isValid) {
+                console.warn(`[DragDropController] itemSlots[${this.currentIndex - 1}] null или невалиден — пропускаем`);
+                continue;
+            }
             if (!candidate.isPlaced) {
                 item = candidate;
                 break;
@@ -342,6 +357,12 @@ export class DragDropController extends Component {
         }
 
         const original: DraggableItem = item;
+
+        // Проверяем что у оригинала есть валидная нода
+        if (!original.node || !original.node.isValid) {
+            console.error(`[DragDropController] У предмета "${original.itemId}" отсутствует или невалидна нода`);
+            return;
+        }
 
         // Обновляем targetWorldPos перед спавном — на случай если onLoad сработал до
         // полной инициализации иерархии (prefab-инстансы в Slots-layer)
@@ -398,6 +419,11 @@ export class DragDropController extends Component {
                 if (cloneAnim) {
                     cloneAnim.play('ItamFloatleft');
                 }
+
+                // Если missesBeforeHint = 0, показываем подсказку сразу
+                if (this.missesBeforeHint === 0 && !original.isPlaced) {
+                    original.playHologramHint();
+                }
             })
             .start();
     }
@@ -406,8 +432,9 @@ export class DragDropController extends Component {
 
     /** Проверяет все ли предметы размещены. Если да — показывает ctaNode */
     private _checkCompletion(): void {
-        const placed = this.itemSlots.filter(item => item.isPlaced).length;
-        const total = this.itemSlots.length;
+        const validItems = this.itemSlots.filter(item => this._isValidItemSlot(item));
+        const placed = validItems.filter(item => item.isPlaced).length;
+        const total = validItems.length;
         console.log(`[DragDropController] Completion check: ${placed}/${total} размещено. ctaNode=${!!this.ctaNode}`);
 
         if (placed < total) return;
@@ -433,6 +460,48 @@ export class DragDropController extends Component {
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private _repairItemSlotsIfNeeded(): void {
+        const validSerializedSlots = this.itemSlots.filter(item => this._isValidItemSlot(item));
+        const slotsLayer = this._findChildDeep(this.node, 'Slots-layer');
+        const sceneSlots = slotsLayer
+            ? slotsLayer.getComponentsInChildren(DraggableItem)
+                .filter(item => this._isValidItemSlot(item) && item.node !== slotsLayer)
+            : [];
+
+        if (sceneSlots.length === 0) {
+            this.itemSlots = validSerializedSlots;
+            console.warn(`[DragDropController] Slots-layer не найден или не содержит DraggableItem. Валидных itemSlots: ${this.itemSlots.length}`);
+            return;
+        }
+
+        const hasBrokenSerializedSlots = validSerializedSlots.length !== this.itemSlots.length;
+        const hasIncompleteSerializedSlots = validSerializedSlots.length < sceneSlots.length;
+
+        if (hasBrokenSerializedSlots || hasIncompleteSerializedSlots) {
+            this.itemSlots = sceneSlots;
+            this.currentIndex = 0;
+            console.warn(`[DragDropController] itemSlots восстановлен из Slots-layer: ${this.itemSlots.length}`);
+            return;
+        }
+
+        this.itemSlots = validSerializedSlots;
+    }
+
+    private _isValidItemSlot(item: DraggableItem | null | undefined): item is DraggableItem {
+        return !!item && item instanceof DraggableItem && !!item.node && item.node.isValid;
+    }
+
+    private _findChildDeep(root: Node, name: string): Node | null {
+        if (root.name === name) return root;
+
+        for (const child of root.children) {
+            const found = this._findChildDeep(child, name);
+            if (found) return found;
+        }
+
+        return null;
+    }
 
     /**
      * Возвращает случайную точку в world-пространстве внутри UITransform ноды fallLayer.

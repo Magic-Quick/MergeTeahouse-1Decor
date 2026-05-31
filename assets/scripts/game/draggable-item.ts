@@ -1,4 +1,4 @@
-import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation } from 'cc';
+import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation, Color } from 'cc';
 
 const { ccclass, property } = _decorator;
 
@@ -59,14 +59,16 @@ export class DraggableItem extends Component {
 
     /** Скрывает оригинал (вызывается из DragDropController.start()) */
     hide(): void {
+        if (!this.node || !this.node.isValid) return;
         this.node.active = false;
     }
 
     /** Делает оригинал видимым (вызывается когда drag-копия успешно доставлена) */
     reveal(): void {
-        if (this.isPlaced) return;
+        if (this.isPlaced || !this.node || !this.node.isValid) return;
         this.isPlaced = true;
         this.node.active = true;
+        this._setSpriteAlpha(255);
         // Запускаем анимацию установки предмета
         const anim = this.node.getComponent(Animation);
         if (anim) {
@@ -79,13 +81,14 @@ export class DraggableItem extends Component {
     /**
      * Запускает анимацию HologrammPulse на оригинале как подсказку.
      * Активирует ноду чтобы анимация была видна.
-     * Вызывается из DragDropController после 2 промахов.
+     * Вызывается из DragDropController после заданного количества промахов (missesBeforeHint).
      */
     playHologramHint(): void {
-        if (this.isPlaced) return;
-        this.node.active = true;
+        if (this.isPlaced || !this.node || !this.node.isValid) return;
         // Не перезапускаем если анимация уже играет
         if (this._hologramPlaying) return;
+        this._setSpriteAlpha(0);
+        this.node.active = true;
         const anim = this.node.getComponent(Animation);
         if (anim) {
             this._hologramPlaying = true;
@@ -96,10 +99,11 @@ export class DraggableItem extends Component {
 
     /** Скрывает оригинал и останавливает анимацию подсказки */
     stopHologramHint(): void {
-        if (this.isPlaced) return;
+        if (this.isPlaced || !this.node || !this.node.isValid) return;
         this._hologramPlaying = false;
         const anim = this.node.getComponent(Animation);
         if (anim) anim.stop();
+        this._setSpriteAlpha(0);
         this.node.active = false;
     }
 
@@ -108,5 +112,13 @@ export class DraggableItem extends Component {
         if (this.spriteComp) {
             this.spriteComp.spriteFrame = frame;
         }
+    }
+
+    private _setSpriteAlpha(alpha: number): void {
+        if (!this.spriteComp) return;
+
+        const color = this.spriteComp.color?.clone() ?? new Color(255, 255, 255, 255);
+        color.a = alpha;
+        this.spriteComp.color = color;
     }
 }

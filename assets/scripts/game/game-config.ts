@@ -14,4 +14,7 @@ export class GameConfig extends Component {
 
     @property({ tooltip: 'Задержка перед показом CTA после установки всех предметов (сек)' })
     ctaDelay: number = 3;
+
+    @property({ tooltip: 'Количество неудачных попыток перед появлением голограммы-подсказки (0 = подсказка появляется сразу)' })
+    missesBeforeHint: number = 2;
 }
