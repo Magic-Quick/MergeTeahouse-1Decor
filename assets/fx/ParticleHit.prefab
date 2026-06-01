@@ -162,7 +162,7 @@
       "__expectedType__": "cc.ParticleAsset"
     },
     "_spriteFrame": {
-      "__uuid__": "89d64ebe-3910-4a02-8c13-f902830ca8cc@f9941",
+      "__uuid__": "ca5048e6-b3bb-43c4-82fd-1cb2d5a2b8cf@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_totalParticles": 200,

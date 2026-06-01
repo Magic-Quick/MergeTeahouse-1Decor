@@ -9,11 +9,12 @@ export const EVT_DRAG_CANCEL  = 'DragCancel';   // {}
 
 // ─── Шкатулка ────────────────────────────────────────────────────────────────
 export const EVT_CHEST_TAPPED        = 'ChestTapped';        // {}
-export const EVT_ITEM_SPAWNED        = 'ItemSpawned';        // { item: FurnitureItem }
+export const EVT_ITEM_SPAWNED        = 'ItemSpawned';        // { item, clone }
 export const EVT_ALL_ITEMS_SPAWNED   = 'AllItemsSpawned';    // {}
 
 // ─── Предметы / перетаскивание ───────────────────────────────────────────────
 export const EVT_ITEM_DRAG_START     = 'ItemDragStart';      // { item }
+export const EVT_ITEM_DRAG_MOVE      = 'ItemDragMove';       // { item }
 export const EVT_ITEM_DRAG_END       = 'ItemDragEnd';        // { item }
 export const EVT_ITEM_DROP_ATTEMPT   = 'ItemDropAttempt';    // { item, slotId }
 export const EVT_ITEM_PLACED         = 'ItemPlaced';         // { item, slotId }
@@ -41,9 +42,15 @@ export const EVT_PLAY_SOUND          = 'PlaySound';          // { soundId: strin
 
 // Sound IDs
 export const SOUND_CHEST_TAP         = 'chest_tap';
+export const SOUND_BOX_OPEN          = 'box_open';
+export const SOUND_BOX_GET           = 'box_get';
 export const SOUND_ITEM_SPAWN        = 'item_spawn';
 export const SOUND_ITEM_PLACED       = 'item_placed';   // «дзинь»
 export const SOUND_WRONG_SLOT        = 'wrong_slot';
 export const SOUND_ROOM_COMPLETE     = 'room_complete';
 export const SOUND_COINS             = 'coins';
 export const SOUND_CONFETTI          = 'confetti';
+export const SOUND_WIN_MENU_SHOWN    = 'win_menu_shown';
+export const SOUND_CTA_SHOWN         = 'cta_shown';
+export const SOUND_GROW              = 'grow';
+export const SOUND_WHOOSH            = 'whoosh';

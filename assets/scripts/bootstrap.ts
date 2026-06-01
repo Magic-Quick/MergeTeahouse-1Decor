@@ -1,10 +1,17 @@
 import { _decorator, Component, Node, Camera, Animation } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { AudioCatalog } from 'db://assets/scripts/audio/audio-catalog';
-import { AudioControllerLegacy } from 'db://assets/scripts/audio/audio-controller';
+import { AudioController } from 'db://assets/scripts/audio/audio-controller';
+import { AppLovinAnalytics } from 'db://assets/scripts/core/AppLovinAnalytics';
 import { GameConfig } from 'db://assets/scripts/game/game-config';
 import { DragDropController } from 'db://assets/scripts/game/drag-drop-controller';
-import { EVT_GAME_COMPLETE } from 'db://assets/scripts/common/events';
+import superHtmlPlayable from 'db://assets/scripts/super_html/super_html_playable';
+import {
+    EVT_GAME_COMPLETE,
+    EVT_PLAY_SOUND,
+    SOUND_CTA_SHOWN,
+    SOUND_WIN_MENU_SHOWN,
+} from 'db://assets/scripts/common/events';
 
 const { ccclass, property } = _decorator;
 
@@ -55,7 +62,7 @@ export class Bootstrap extends Component {
 
     // ─── Приватные системы ───────────────────────────────────────────────────
 
-    private audioController?: AudioControllerLegacy;
+    private audioController?: AudioController;
     private winMessageNode: Node | null = null;
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
@@ -63,6 +70,7 @@ export class Bootstrap extends Component {
     private _unsubscribeComplete: (() => void) | null = null;
 
     onLoad(): void {
+        AppLovinAnalytics.impression();
         this._initAudio();
         this._initGame();
         this._subscribeToEvents();
@@ -79,7 +87,7 @@ export class Bootstrap extends Component {
     // ─── Инициализация ───────────────────────────────────────────────────────
 
     private _initAudio(): void {
-        this.audioController = new AudioControllerLegacy({
+        this.audioController = new AudioController({
             bus: GlobalEventBus,
             catalog: this.audioCatalog,
             audioSourceParent: this.audioSourceParent,
@@ -89,6 +97,11 @@ export class Bootstrap extends Component {
     }
 
     private _initGame(): void {
+        if (this.gameConfig) {
+            superHtmlPlayable.set_app_store_url(this.gameConfig.appStoreUrl);
+            superHtmlPlayable.set_google_play_url(this.gameConfig.googlePlayUrl);
+        }
+
         // Скрываем SparkStarsWalls — показывается только при EVT_GAME_COMPLETE
         if (this.sparkStarsNode) {
             this.sparkStarsNode.active = false;
@@ -121,6 +134,7 @@ export class Bootstrap extends Component {
     }
 
     private _onGameComplete(): void {
+        AppLovinAnalytics.win();
         this._showWinMessage();
 
         const ctaDelay = this.gameConfig?.ctaDelay ?? 0;
@@ -133,6 +147,7 @@ export class Bootstrap extends Component {
         if (this.ctaNode) {
             this.ctaNode.setPosition(0, 0, 0);
             this.ctaNode.active = true;
+            GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CTA_SHOWN });
             this._playWinMessageExit();
             console.log('[Bootstrap] CTA активирована');
         } else {
@@ -154,6 +169,7 @@ export class Bootstrap extends Component {
         }
 
         winMessageNode.active = true;
+        GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_WIN_MENU_SHOWN });
         console.log('[Bootstrap] WinMessage активирован');
     }
 

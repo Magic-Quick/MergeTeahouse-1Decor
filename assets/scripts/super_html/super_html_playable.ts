@@ -12,6 +12,7 @@
 import { _decorator, Component } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { EVT_GAME_COMPLETE } from 'db://assets/scripts/common/events';
+import { AppLovinAnalytics } from 'db://assets/scripts/core/AppLovinAnalytics';
 
 const { ccclass, property } = _decorator;
 
@@ -89,6 +90,7 @@ export class SuperHtmlPlayable extends Component {
 
     download() {
         // console.log("download"); // Отключено - функционал работает
+        AppLovinAnalytics.ctaClick();
         // @ts-ignore
         window.super_html && super_html.download();
     }

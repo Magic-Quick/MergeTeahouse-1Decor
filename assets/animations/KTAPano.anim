@@ -61,7 +61,28 @@
       }
     ],
     "_exoticAnimation": null,
-    "_events": [],
+    "_events": [
+      {
+        "frame": 0.7166666666666667,
+        "func": "",
+        "params": []
+      },
+      {
+        "frame": 0.7166666666666667,
+        "func": "Grow",
+        "params": []
+      },
+      {
+        "frame": 1.2833333333333334,
+        "func": "",
+        "params": []
+      },
+      {
+        "frame": 1.2833333333333334,
+        "func": "Grow",
+        "params": []
+      }
+    ],
     "_embeddedPlayers": [],
     "_additiveSettings": {
       "__id__": 143

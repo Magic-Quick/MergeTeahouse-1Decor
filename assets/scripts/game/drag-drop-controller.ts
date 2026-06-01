@@ -5,19 +5,25 @@ import {
 } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import {
+    EVT_CHEST_TAPPED,
+    EVT_ITEM_SPAWNED,
     EVT_ITEM_DRAG_START,
+    EVT_ITEM_DRAG_MOVE,
     EVT_ITEM_DRAG_END,
     EVT_ITEM_PLACED,
     EVT_ITEM_WRONG_SLOT,
     EVT_GAME_COMPLETE,
     EVT_PLAY_SOUND,
-    SOUND_CHEST_TAP,
+    SOUND_BOX_OPEN,
+    SOUND_BOX_GET,
     SOUND_ITEM_SPAWN,
     SOUND_ITEM_PLACED,
     SOUND_WRONG_SLOT,
     SOUND_ROOM_COMPLETE,
 } from 'db://assets/scripts/common/events';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
+import { CameraShake } from 'db://assets/scripts/CameraShake';
+import { AppLovinAnalytics } from 'db://assets/scripts/core/AppLovinAnalytics';
 
 const { ccclass, property } = _decorator;
 
@@ -113,6 +119,9 @@ export class DragDropController extends Component {
     /** Флаг: анимация BoxOpen уже была проиграна */
     private _boxOpenPlayed: boolean = false;
 
+    /** true после завершения игры — блокирует дальнейшие клики по коробке */
+    private _gameCompleted: boolean = false;
+
     /** Активная drag-копия (та что сейчас тащится) */
     private dragClone: Node | null = null;
     /** Оригинал, которому принадлежит текущая копия */
@@ -133,6 +142,7 @@ export class DragDropController extends Component {
 
     start(): void {
         this._repairItemSlotsIfNeeded();
+        this._gameCompleted = false;
 
         // Скрываем все оригиналы — они ждут своих drag-копий
         for (const item of this.itemSlots) {
@@ -176,6 +186,7 @@ export class DragDropController extends Component {
             if (!uiTransform) continue;
             const bb = uiTransform.getBoundingBoxToWorld();
             if (bb.contains(new Vec2(worldPos.x, worldPos.y))) {
+                AppLovinAnalytics.gameStart();
                 this.isDragging = true;
                 this.dragClone = cloneNode;
                 this.dragOriginal = original;
@@ -208,11 +219,11 @@ export class DragDropController extends Component {
         }
 
         // Тап по боксу — спавним следующий предмет (без ограничений)
-        if (this._hitTestNode(this.boxNode, worldPos)) {
-            GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CHEST_TAP });
-
+        if (!this._gameCompleted && this._hitTestNode(this.boxNode, worldPos)) {
+            AppLovinAnalytics.gameStart();
             const spawned = this._spawnNextItem();
             if (!spawned) return;
+            GlobalEventBus.publish({ type: EVT_CHEST_TAPPED });
 
             const boxAnim = this.boxNode?.getComponent(Animation);
             if (!boxAnim) return;
@@ -220,21 +231,33 @@ export class DragDropController extends Component {
             // Первый спавн открывает коробку, следующие проигрывают короткую анимацию выдачи предмета.
             if (!this._boxOpenPlayed) {
                 this._boxOpenPlayed = true;
+                GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_BOX_OPEN });
                 boxAnim.play('BoxOpen');
             } else {
+                GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_BOX_GET });
                 boxAnim.play('BoxGet');
             }
         }
     }
 
     private _onTouchMove(event: EventTouch): void {
-        if (!this.isDragging || !this.dragClone) return;
+        if (!this.isDragging || !this.dragClone || !this.dragOriginal) return;
         const worldPos = this._touchToWorld(event);
-        this.dragClone.setWorldPosition(
+        const targetWorldPos = new Vec3(
             worldPos.x + this.touchOffset.x,
             worldPos.y + this.touchOffset.y,
             this.dragClone.worldPosition.z,
         );
+        const moved = Vec3.distance(this.dragClone.worldPosition, targetWorldPos) > 1;
+
+        this.dragClone.setWorldPosition(
+            targetWorldPos.x,
+            targetWorldPos.y,
+            targetWorldPos.z,
+        );
+        if (moved) {
+            GlobalEventBus.publish({ type: EVT_ITEM_DRAG_MOVE, item: this.dragOriginal });
+        }
     }
 
     private _onTouchEnd(_event: EventTouch): void {
@@ -279,6 +302,7 @@ export class DragDropController extends Component {
                         placementTarget.stopHologramHint();
                     }
                     placementTarget.reveal(); // isPlaced = true здесь, node.active = true
+                    this._shakeCamera();
                     if (placementTarget.node && placementTarget.node.isValid) {
                         const targetScale = placementTarget.node.scale.clone();
                         this._playPlaceEffect(placementTarget.node, targetScale);
@@ -394,6 +418,7 @@ export class DragDropController extends Component {
         const boxWorldPos = this.boxNode?.worldPosition.clone() ?? new Vec3();
         clone.setWorldPosition(boxWorldPos.x, boxWorldPos.y, boxWorldPos.z);
         clone.getComponent(DraggableItem)?.playInstallParticles();
+        this._shakeCamera();
 
         // Регистрируем клон
         this.activeClones.set(clone, original);
@@ -416,6 +441,7 @@ export class DragDropController extends Component {
             .to(0.35, { worldPosition: landPos }, { easing: 'backOut' })
             .call(() => {
                 console.log(`[DragDropController] Spawned: "${original.itemId}" — готов к drag`);
+                GlobalEventBus.publish({ type: EVT_ITEM_SPAWNED, item: original, clone });
 
                 // Рандомный начальный наклон: +floatTiltAngle или -floatTiltAngle
                 const tilt = Math.random() < 0.5 ? this.floatTiltAngle : -this.floatTiltAngle;
@@ -447,6 +473,7 @@ export class DragDropController extends Component {
         const placed = validItems.filter(item => item.isPlaced).length;
         const total = validItems.length;
         console.log(`[DragDropController] Completion check: ${placed}/${total} размещено. ctaNode=${!!this.ctaNode}`);
+        this._trackAppLovinProgress(placed, total);
 
         if (this.debugCompleteAfterFirstPlacement && placed >= 1) {
             console.log('[DragDropController] DEBUG: завершение после первой установленной декорации');
@@ -461,6 +488,9 @@ export class DragDropController extends Component {
     }
 
     private _completeGame(): void {
+        if (this._gameCompleted) return;
+        this._gameCompleted = true;
+
         // Публикуем событие завершения игры
         GlobalEventBus.publish({ type: EVT_GAME_COMPLETE });
         GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ROOM_COMPLETE });
@@ -605,5 +635,23 @@ export class DragDropController extends Component {
             .to(0.1, { scale: bigScale })
             .to(0.15, { scale: originalScale })
             .start();
+    }
+
+    private _trackAppLovinProgress(placed: number, total: number): void {
+        if (total <= 0) return;
+
+        const progress = placed / total;
+        if (progress >= 0.75 && progress < 1) {
+            AppLovinAnalytics.challengePass75();
+        } else if (progress >= 0.5) {
+            AppLovinAnalytics.challengePass50();
+        } else if (progress >= 0.25) {
+            AppLovinAnalytics.challengePass25();
+        }
+    }
+
+    private _shakeCamera(): void {
+        const shake = this.camera?.node.getComponent(CameraShake);
+        shake?.shake();
     }
 }

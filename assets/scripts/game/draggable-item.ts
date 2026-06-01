@@ -1,4 +1,6 @@
 import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation, Color, UITransform, ParticleSystem2D, Vec2 } from 'cc';
+import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
+import { EVT_PLAY_SOUND, SOUND_GROW, SOUND_WHOOSH } from 'db://assets/scripts/common/events';
 
 const { ccclass, property } = _decorator;
 
@@ -107,13 +109,15 @@ export class DraggableItem extends Component {
      */
     playHologramHint(): void {
         if (this.isPlaced || !this.node || !this.node.isValid) return;
-        // Не перезапускаем если анимация уже играет
-        if (this._hologramPlaying) return;
+        const anim = this.node.getComponent(Animation);
+        const state = anim?.getState('HologrammPulse') as { isPlaying?: boolean } | null | undefined;
+        if (this._hologramPlaying && this.node.active && state?.isPlaying) return;
+
         this._setSpriteAlpha(0);
         this.node.active = true;
-        const anim = this.node.getComponent(Animation);
         if (anim) {
             this._hologramPlaying = true;
+            anim.stop();
             anim.play('HologrammPulse');
             console.log(`[DraggableItem] "${this.itemId}" — HologrammPulse (подсказка)`);
         }
@@ -134,6 +138,16 @@ export class DraggableItem extends Component {
         if (this.spriteComp) {
             this.spriteComp.spriteFrame = frame;
         }
+    }
+
+    /** Вызывается из animation frame event с функцией Grow. */
+    Grow(): void {
+        GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_GROW });
+    }
+
+    /** Вызывается из animation frame event с функцией Whoosh. */
+    Whoosh(): void {
+        GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_WHOOSH });
     }
 
     private _setSpriteAlpha(alpha: number): void {
