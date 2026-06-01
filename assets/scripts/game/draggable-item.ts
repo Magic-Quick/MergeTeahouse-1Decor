@@ -81,8 +81,23 @@ export class DraggableItem extends Component {
             anim.play('ItemInstall');
             console.log(`[DraggableItem] "${this.itemId}" — ItemInstall запущена`);
         }
-        this._playInstallParticles();
+        this.playInstallParticles();
         console.log(`[DraggableItem] "${this.itemId}" — размещён`);
+    }
+
+    /** Проигрывает одноразовый эффект появления/установки предмета. */
+    playInstallParticles(): void {
+        const particles = this.installParticles;
+        if (!particles || !particles.node || !particles.node.isValid) return;
+
+        const uiTransform = this.node.getComponent(UITransform);
+        if (uiTransform) {
+            particles.posVar = new Vec2(uiTransform.width * 0.7, uiTransform.height * 0.7);
+        }
+
+        particles.node.active = true;
+        particles.stopSystem();
+        particles.resetSystem();
     }
 
     /**
@@ -129,17 +144,4 @@ export class DraggableItem extends Component {
         this.spriteComp.color = color;
     }
 
-    private _playInstallParticles(): void {
-        const particles = this.installParticles;
-        if (!particles || !particles.node || !particles.node.isValid) return;
-
-        const uiTransform = this.node.getComponent(UITransform);
-        if (uiTransform) {
-            particles.posVar = new Vec2(uiTransform.width * 0.7, uiTransform.height * 0.7);
-        }
-
-        particles.node.active = true;
-        particles.stopSystem();
-        particles.resetSystem();
-    }
 }

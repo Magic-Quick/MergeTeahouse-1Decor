@@ -211,16 +211,19 @@ export class DragDropController extends Component {
         if (this._hitTestNode(this.boxNode, worldPos)) {
             GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CHEST_TAP });
 
-            // При первом тапе проигрываем анимацию BoxOpen
-            if (!this._boxOpenPlayed && this.boxNode) {
-                this._boxOpenPlayed = true;
-                const boxAnim = this.boxNode.getComponent(Animation);
-                if (boxAnim) {
-                    boxAnim.play('BoxOpen');
-                }
-            }
+            const spawned = this._spawnNextItem();
+            if (!spawned) return;
 
-            this._spawnNextItem();
+            const boxAnim = this.boxNode?.getComponent(Animation);
+            if (!boxAnim) return;
+
+            // Первый спавн открывает коробку, следующие проигрывают короткую анимацию выдачи предмета.
+            if (!this._boxOpenPlayed) {
+                this._boxOpenPlayed = true;
+                boxAnim.play('BoxOpen');
+            } else {
+                boxAnim.play('BoxGet');
+            }
         }
     }
 
@@ -341,7 +344,7 @@ export class DragDropController extends Component {
 
     // ─── Спавн предмета ──────────────────────────────────────────────────────
 
-    private _spawnNextItem(): void {
+    private _spawnNextItem(): boolean {
         // Ищем следующий незанятый предмет (цикл — нет риска stack overflow)
         let item: DraggableItem | null = null;
         while (this.currentIndex < this.itemSlots.length) {
@@ -359,7 +362,7 @@ export class DragDropController extends Component {
 
         if (!item) {
             console.log('[DragDropController] Все предметы уже выданы');
-            return;
+            return false;
         }
 
         const original: DraggableItem = item;
@@ -367,7 +370,7 @@ export class DragDropController extends Component {
         // Проверяем что у оригинала есть валидная нода
         if (!original.node || !original.node.isValid) {
             console.error(`[DragDropController] У предмета "${original.itemId}" отсутствует или невалидна нода`);
-            return;
+            return false;
         }
 
         // Обновляем targetWorldPos перед спавном — на случай если onLoad сработал до
@@ -390,6 +393,7 @@ export class DragDropController extends Component {
         // Стартовая позиция — бокс (устанавливаем ПОСЛЕ setParent)
         const boxWorldPos = this.boxNode?.worldPosition.clone() ?? new Vec3();
         clone.setWorldPosition(boxWorldPos.x, boxWorldPos.y, boxWorldPos.z);
+        clone.getComponent(DraggableItem)?.playInstallParticles();
 
         // Регистрируем клон
         this.activeClones.set(clone, original);
@@ -432,6 +436,7 @@ export class DragDropController extends Component {
                 }
             })
             .start();
+        return true;
     }
 
     // ─── Завершение игры ─────────────────────────────────────────────────────

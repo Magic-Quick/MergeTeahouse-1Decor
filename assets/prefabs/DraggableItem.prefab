@@ -1320,6 +1320,7 @@
     "spriteComp": {
       "__id__": 74
     },
+    "installParticles": null,
     "snapRadius": 80,
     "_id": ""
   },
@@ -1371,7 +1372,11 @@
     },
     "fileId": "10Yuvo4m1HJ7TFEqtHHheX",
     "instance": null,
-    "targetOverrides": null,
+    "targetOverrides": [
+      {
+        "__id__": 109
+      }
+    ],
     "nestedPrefabInstanceRoots": [
       {
         "__id__": 77
@@ -1379,6 +1384,28 @@
       {
         "__id__": 2
       }
+    ]
+  },
+  {
+    "__type__": "cc.TargetOverrideInfo",
+    "source": {
+      "__id__": 104
+    },
+    "sourceInfo": null,
+    "propertyPath": [
+      "installParticles"
+    ],
+    "target": {
+      "__id__": 77
+    },
+    "targetInfo": {
+      "__id__": 110
+    }
+  },
+  {
+    "__type__": "cc.TargetInfo",
+    "localID": [
+      "cdS2Kvh2FKBKE+CdJg4vI0"
     ]
   }
 ]
