@@ -17,4 +17,7 @@ export class GameConfig extends Component {
 
     @property({ tooltip: 'Количество неудачных попыток перед появлением голограммы-подсказки (0 = подсказка появляется сразу)' })
     missesBeforeHint: number = 2;
+
+    @property({ tooltip: 'DEBUG: завершать игру после первой установленной декорации' })
+    debugCompleteAfterFirstPlacement: boolean = false;
 }

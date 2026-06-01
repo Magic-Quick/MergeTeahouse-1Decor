@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Camera } from 'cc';
+import { _decorator, Component, Node, Camera, Animation } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { AudioCatalog } from 'db://assets/scripts/audio/audio-catalog';
 import { AudioControllerLegacy } from 'db://assets/scripts/audio/audio-controller';
@@ -56,6 +56,7 @@ export class Bootstrap extends Component {
     // ─── Приватные системы ───────────────────────────────────────────────────
 
     private audioController?: AudioControllerLegacy;
+    private winMessageNode: Node | null = null;
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -93,8 +94,18 @@ export class Bootstrap extends Component {
             this.sparkStarsNode.active = false;
         }
 
+        this.winMessageNode = this._findChildDeep(this.node, 'WinMessage');
+        if (this.winMessageNode) {
+            this.winMessageNode.active = false;
+        }
+
         // Передаём камеру и ctaNode в DragDropController
         if (this.dragDropController && this.camera) {
+            if (this.gameConfig) {
+                this.dragDropController.ctaDelay = this.gameConfig.ctaDelay;
+                this.dragDropController.missesBeforeHint = this.gameConfig.missesBeforeHint;
+                this.dragDropController.debugCompleteAfterFirstPlacement = this.gameConfig.debugCompleteAfterFirstPlacement;
+            }
             this.dragDropController.init(this.camera, this.ctaNode);
             console.log('[Bootstrap] DragDropController инициализирован');
         } else {
@@ -110,9 +121,65 @@ export class Bootstrap extends Component {
     }
 
     private _onGameComplete(): void {
+        this._showWinMessage();
+
+        const ctaDelay = this.gameConfig?.ctaDelay ?? 0;
+        this.scheduleOnce(() => {
+            this._showCta();
+        }, ctaDelay);
+    }
+
+    private _showCta(): void {
+        if (this.ctaNode) {
+            this.ctaNode.setPosition(0, 0, 0);
+            this.ctaNode.active = true;
+            this._playWinMessageExit();
+            console.log('[Bootstrap] CTA активирована');
+        } else {
+            console.warn('[Bootstrap] ctaNode не назначена — CTA не появится');
+        }
+
         if (this.sparkStarsNode) {
             this.sparkStarsNode.active = true;
             console.log('[Bootstrap] SparkStarsWalls активирован');
         }
+    }
+
+    private _showWinMessage(): void {
+        const winMessageNode = this.winMessageNode ?? this._findChildDeep(this.node, 'WinMessage');
+
+        if (!winMessageNode) {
+            console.warn('[Bootstrap] WinMessage не найден');
+            return;
+        }
+
+        winMessageNode.active = true;
+        console.log('[Bootstrap] WinMessage активирован');
+    }
+
+    private _playWinMessageExit(): void {
+        const winMessageNode = this.winMessageNode ?? this._findChildDeep(this.node, 'WinMessage');
+        const anim = winMessageNode?.getComponent(Animation);
+
+        if (!winMessageNode || !anim) {
+            console.warn('[Bootstrap] WinMessageExit не запущена: WinMessage/Animation не найден');
+            return;
+        }
+
+        winMessageNode.active = true;
+        anim.stop();
+        anim.play('WinMessageExit');
+        console.log('[Bootstrap] WinMessageExit запущена');
+    }
+
+    private _findChildDeep(root: Node, name: string): Node | null {
+        if (root.name === name) return root;
+
+        for (const child of root.children) {
+            const found = this._findChildDeep(child, name);
+            if (found) return found;
+        }
+
+        return null;
     }
 }

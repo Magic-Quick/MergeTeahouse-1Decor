@@ -72,15 +72,14 @@ export class DragDropController extends Component {
     })
     tiltDuration: number = 0.3;
 
-    @property({
-        tooltip: 'Задержка перед показом CTA после установки всех предметов (сек)',
-    })
+    /** Runtime-настройка из GameConfig */
     ctaDelay: number = 3;
 
-    @property({
-        tooltip: 'Количество неудачных попыток перед появлением голограммы-подсказки (0 = подсказка появляется сразу)',
-    })
+    /** Runtime-настройка из GameConfig: 0 = подсказка появляется сразу */
     missesBeforeHint: number = 2;
+
+    /** Runtime-настройка из GameConfig */
+    debugCompleteAfterFirstPlacement: boolean = false;
 
     /** Камера передаётся из Bootstrap через init() */
     private camera: Camera | null = null;
@@ -252,36 +251,43 @@ export class DragDropController extends Component {
             if (ps) ps.stopSystem(); // прекращает создание новых частиц, живые доигрывают
         }
 
-        // Сравниваем позицию клона с targetWorldPos оригинала (оба в world space)
+        // Ищем свободный слот с таким же itemId в радиусе дропа.
+        // Это делает дубликаты взаимозаменяемыми: например, Carpet может встать
+        // в любой свободный Carpet-слот, а не только в свой исходный original.
         const clonePos = clone.worldPosition;
-        const dist = Vec3.distance(original.targetWorldPos, clonePos);
-        const inRadius = dist <= original.snapRadius;
-        console.log(`[DragDropController] Drop: clone=(${clonePos.x.toFixed(0)},${clonePos.y.toFixed(0)}) target=(${original.targetWorldPos.x.toFixed(0)},${original.targetWorldPos.y.toFixed(0)}) dist=${dist.toFixed(0)} radius=${original.snapRadius}`);
+        const placementTarget = this._findPlacementTarget(original, clonePos);
+        const targetForLog = placementTarget ?? original;
+        const dist = Vec3.distance(targetForLog.targetWorldPos, clonePos);
+        const radius = placementTarget?.snapRadius ?? original.snapRadius;
+        console.log(`[DragDropController] Drop: clone=(${clonePos.x.toFixed(0)},${clonePos.y.toFixed(0)}) target=(${targetForLog.targetWorldPos.x.toFixed(0)},${targetForLog.targetWorldPos.y.toFixed(0)}) dist=${dist.toFixed(0)} radius=${radius}`);
 
-        if (inRadius && !original.isPlaced) {
+        if (placementTarget) {
             // Успех: клон летит к цели, исчезает, оригинал появляется
             this.activeClones.delete(clone);
             this.missCount.delete(clone);
             this.cloneTilt.delete(clone);
             tween(clone)
-                .to(0.15, { worldPosition: original.targetWorldPos })
+                .to(0.15, { worldPosition: placementTarget.targetWorldPos })
                 .call(() => {
                     clone.destroy();
                     // Останавливаем HologrammPulse если он играл
                     original.stopHologramHint();
-                    original.reveal(); // isPlaced = true здесь, node.active = true
-                    if (original.node && original.node.isValid) {
-                        const origScale = original.node.scale.clone();
-                        this._playPlaceEffect(original.node, origScale);
+                    if (placementTarget !== original) {
+                        placementTarget.stopHologramHint();
+                    }
+                    placementTarget.reveal(); // isPlaced = true здесь, node.active = true
+                    if (placementTarget.node && placementTarget.node.isValid) {
+                        const targetScale = placementTarget.node.scale.clone();
+                        this._playPlaceEffect(placementTarget.node, targetScale);
                     }
                     // Проверяем завершение ПОСЛЕ reveal() — теперь isPlaced корректен
                     this._checkCompletion();
                 })
                 .start();
 
-            GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: original });
+            GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: placementTarget });
             GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ITEM_PLACED });
-            console.log(`[DragDropController] Placed: "${original.itemId}"`);
+            console.log(`[DragDropController] Placed: "${original.itemId}" -> "${placementTarget.node.name}"`);
         } else {
             // Промах: клон остаётся там где его бросили
 
@@ -345,7 +351,7 @@ export class DragDropController extends Component {
                 console.warn(`[DragDropController] itemSlots[${this.currentIndex - 1}] null или невалиден — пропускаем`);
                 continue;
             }
-            if (!candidate.isPlaced) {
+            if (!candidate.isPlaced && !this._hasActiveCloneFor(candidate)) {
                 item = candidate;
                 break;
             }
@@ -437,26 +443,23 @@ export class DragDropController extends Component {
         const total = validItems.length;
         console.log(`[DragDropController] Completion check: ${placed}/${total} размещено. ctaNode=${!!this.ctaNode}`);
 
+        if (this.debugCompleteAfterFirstPlacement && placed >= 1) {
+            console.log('[DragDropController] DEBUG: завершение после первой установленной декорации');
+            this._completeGame();
+            return;
+        }
+
         if (placed < total) return;
 
         console.log('[DragDropController] Все предметы размещены!');
+        this._completeGame();
+    }
 
+    private _completeGame(): void {
         // Публикуем событие завершения игры
         GlobalEventBus.publish({ type: EVT_GAME_COMPLETE });
         GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ROOM_COMPLETE });
         console.log('[DragDropController] EVT_GAME_COMPLETE опубликовано');
-
-        // CTA появляется с задержкой ctaDelay
-        if (this.ctaNode) {
-            const cta = this.ctaNode;
-            this.scheduleOnce(() => {
-                cta.setPosition(0, 0, 0);
-                cta.active = true;
-                console.log('[DragDropController] CTA активирована');
-            }, this.ctaDelay);
-        } else {
-            console.warn('[DragDropController] ctaNode не назначена — CTA не появится');
-        }
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -481,7 +484,7 @@ export class DragDropController extends Component {
         if (hasBrokenSerializedSlots || hasIncompleteSerializedSlots) {
             this.itemSlots = sceneSlots;
             this.currentIndex = 0;
-            console.warn(`[DragDropController] itemSlots восстановлен из Slots-layer: ${this.itemSlots.length}`);
+            console.log(`[DragDropController] itemSlots восстановлен из Slots-layer: ${this.itemSlots.length}`);
             return;
         }
 
@@ -490,6 +493,35 @@ export class DragDropController extends Component {
 
     private _isValidItemSlot(item: DraggableItem | null | undefined): item is DraggableItem {
         return !!item && item instanceof DraggableItem && !!item.node && item.node.isValid;
+    }
+
+    private _findPlacementTarget(original: DraggableItem, clonePos: Vec3): DraggableItem | null {
+        let nearest: DraggableItem | null = null;
+        let nearestDist = Number.POSITIVE_INFINITY;
+
+        for (const candidate of this.itemSlots) {
+            if (!this._isValidItemSlot(candidate)) continue;
+            if (candidate.isPlaced) continue;
+            if (candidate.itemId !== original.itemId) continue;
+
+            const dist = Vec3.distance(candidate.targetWorldPos, clonePos);
+            if (dist > candidate.snapRadius || dist >= nearestDist) continue;
+
+            nearest = candidate;
+            nearestDist = dist;
+        }
+
+        return nearest;
+    }
+
+    private _hasActiveCloneFor(original: DraggableItem): boolean {
+        for (const [cloneNode, cloneOriginal] of this.activeClones) {
+            if (cloneOriginal === original && cloneNode.isValid && cloneNode.active) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private _findChildDeep(root: Node, name: string): Node | null {

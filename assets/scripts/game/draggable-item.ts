@@ -1,4 +1,4 @@
-import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation, Color } from 'cc';
+import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation, Color, UITransform, ParticleSystem2D, Vec2 } from 'cc';
 
 const { ccclass, property } = _decorator;
 
@@ -27,6 +27,12 @@ export class DraggableItem extends Component {
         tooltip: 'Sprite-компонент. Имя spriteFrame используется как ID предмета.',
     })
     spriteComp: Sprite | null = null;
+
+    @property({
+        type: ParticleSystem2D,
+        tooltip: 'ParticleSystem2D для эффекта установки предмета.',
+    })
+    installParticles: ParticleSystem2D | null = null;
 
     @property({
         tooltip: 'Радиус захвата (world units). При дропе в этом радиусе — снап на место.',
@@ -75,6 +81,7 @@ export class DraggableItem extends Component {
             anim.play('ItemInstall');
             console.log(`[DraggableItem] "${this.itemId}" — ItemInstall запущена`);
         }
+        this._playInstallParticles();
         console.log(`[DraggableItem] "${this.itemId}" — размещён`);
     }
 
@@ -120,5 +127,19 @@ export class DraggableItem extends Component {
         const color = this.spriteComp.color?.clone() ?? new Color(255, 255, 255, 255);
         color.a = alpha;
         this.spriteComp.color = color;
+    }
+
+    private _playInstallParticles(): void {
+        const particles = this.installParticles;
+        if (!particles || !particles.node || !particles.node.isValid) return;
+
+        const uiTransform = this.node.getComponent(UITransform);
+        if (uiTransform) {
+            particles.posVar = new Vec2(uiTransform.width * 0.7, uiTransform.height * 0.7);
+        }
+
+        particles.node.active = true;
+        particles.stopSystem();
+        particles.resetSystem();
     }
 }
