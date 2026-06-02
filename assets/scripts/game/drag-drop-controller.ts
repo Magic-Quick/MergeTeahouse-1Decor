@@ -1,7 +1,7 @@
 import {
     _decorator, Component, Node, Camera, Vec2, Vec3,
     EventTouch, UITransform, input, Input, tween, instantiate, Animation,
-    ParticleSystem2D,
+    ParticleSystem2D, Enum,
 } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import {
@@ -26,6 +26,17 @@ import { CameraShake } from 'db://assets/scripts/CameraShake';
 import { AppLovinAnalytics } from 'db://assets/scripts/core/AppLovinAnalytics';
 
 const { ccclass, property } = _decorator;
+
+enum MotionEasing {
+    linear = 0,
+    smooth = 1,
+    quadOut = 2,
+    quadInOut = 3,
+    sineOut = 4,
+    backOut = 5,
+}
+
+Enum(MotionEasing);
 
 /**
  * DragDropController — компонент на корневой ноде сцены (Canvas).
@@ -78,6 +89,39 @@ export class DragDropController extends Component {
     })
     tiltDuration: number = 0.3;
 
+    @property({ tooltip: 'Длительность мягкого выплывания предмета из коробки, сек' })
+    spawnMoveDuration: number = 0.65;
+
+    @property({ type: MotionEasing, tooltip: 'Easing выплывания из коробки' })
+    spawnMoveEasing: MotionEasing = MotionEasing.quadOut;
+
+    @property({ tooltip: 'Высота дуги при вылете предмета из коробки, world units' })
+    spawnArcHeight: number = 180;
+
+    @property({ tooltip: 'Проигрывать ParticleInstall при вылете предмета из коробки' })
+    spawnInstallParticles: boolean = true;
+
+    @property({ tooltip: 'Трясти камеру при доставании предмета из коробки' })
+    shakeCameraOnSpawn: boolean = true;
+
+    @property({ tooltip: 'Трясти камеру при установке предмета на место' })
+    shakeCameraOnPlace: boolean = true;
+
+    @property({ tooltip: 'Длительность мягкого снапа предмета к месту при установке, сек' })
+    placementMoveDuration: number = 0.28;
+
+    @property({ type: MotionEasing, tooltip: 'Easing снапа к месту' })
+    placementMoveEasing: MotionEasing = MotionEasing.quadOut;
+
+    @property({ tooltip: 'Множитель bounce-скейла после установки' })
+    placementScalePunch: number = 1.12;
+
+    @property({ tooltip: 'Длительность увеличения bounce после установки, сек' })
+    placementScaleUpDuration: number = 0.12;
+
+    @property({ tooltip: 'Длительность возврата bounce после установки, сек' })
+    placementScaleDownDuration: number = 0.22;
+
     /** Runtime-настройка из GameConfig */
     ctaDelay: number = 3;
 
@@ -103,6 +147,12 @@ export class DragDropController extends Component {
      * Ключ — нода клона, значение — оригинал DraggableItem.
      */
     private activeClones: Map<Node, DraggableItem> = new Map();
+
+    /** true — сейчас эмитит ParticleDrug на конкретном клоне */
+    private dragParticlesEmitting: Map<Node, boolean> = new Map();
+
+    /** Таймер авто-остановки ParticleDrug при простое (даже если палец удерживается) */
+    private _dragParticlesStopToken: number = 0;
 
     /**
      * Счётчик промахов для каждого клона.
@@ -206,7 +256,8 @@ export class DragDropController extends Component {
                 if (particleNode) {
                     particleNode.active = true;
                     const ps = particleNode.getComponent(ParticleSystem2D);
-                    if (ps) ps.resetSystem(); // сбрасываем и запускаем эмиссию заново
+                    if (ps) ps.stopSystem(); // не создаём новые частицы без движения
+                    this.dragParticlesEmitting.set(cloneNode, false);
                 }
 
                 // touchOffset от текущей worldPosition клона (с анимационным смещением)
@@ -255,8 +306,34 @@ export class DragDropController extends Component {
             targetWorldPos.y,
             targetWorldPos.z,
         );
+        // Частицы при drag должны появляться только при заметном движении
         if (moved) {
+            const particleNode = this.dragClone.getChildByName('ParticleDrug');
+            if (particleNode) {
+                const ps = particleNode.getComponent(ParticleSystem2D);
+                if (ps && !this.dragParticlesEmitting.get(this.dragClone)) {
+                    ps.resetSystem();
+                    this.dragParticlesEmitting.set(this.dragClone, true);
+                }
+            }
             GlobalEventBus.publish({ type: EVT_ITEM_DRAG_MOVE, item: this.dragOriginal });
+        }
+
+        // TOUCH_MOVE не вызывается, когда палец не двигается, поэтому стопаем частицы по idle-таймеру.
+        if (moved) {
+            const token = ++this._dragParticlesStopToken;
+            const cloneRef = this.dragClone;
+            this.scheduleOnce(() => {
+                if (token !== this._dragParticlesStopToken) return;
+                if (!this.isDragging || this.dragClone !== cloneRef || !cloneRef?.isValid) return;
+                const particleNode = cloneRef.getChildByName('ParticleDrug');
+                if (!particleNode) return;
+                const ps = particleNode.getComponent(ParticleSystem2D);
+                if (ps && this.dragParticlesEmitting.get(cloneRef)) {
+                    ps.stopSystem();
+                    this.dragParticlesEmitting.set(cloneRef, false);
+                }
+            }, 0.12);
         }
     }
 
@@ -269,6 +346,7 @@ export class DragDropController extends Component {
         this.isDragging = false;
         this.dragClone = null;
         this.dragOriginal = null;
+        this._dragParticlesStopToken++;
 
         // Останавливаем эмиссию новых частиц — существующие доигрывают цикл
         const particleNode = clone.getChildByName('ParticleDrug');
@@ -276,6 +354,7 @@ export class DragDropController extends Component {
             const ps = particleNode.getComponent(ParticleSystem2D);
             if (ps) ps.stopSystem(); // прекращает создание новых частиц, живые доигрывают
         }
+        this.dragParticlesEmitting.delete(clone);
 
         // Ищем свободный слот с таким же itemId в радиусе дропа.
         // Это делает дубликаты взаимозаменяемыми: например, Carpet может встать
@@ -292,8 +371,13 @@ export class DragDropController extends Component {
             this.activeClones.delete(clone);
             this.missCount.delete(clone);
             this.cloneTilt.delete(clone);
+            this._alignCloneTiltToTarget(clone, placementTarget);
             tween(clone)
-                .to(0.15, { worldPosition: placementTarget.targetWorldPos })
+                .to(
+                    this.placementMoveDuration,
+                    { worldPosition: placementTarget.targetWorldPos },
+                    { easing: this._resolveEasing(this.placementMoveEasing) },
+                )
                 .call(() => {
                     clone.destroy();
                     // Останавливаем HologrammPulse если он играл
@@ -302,7 +386,9 @@ export class DragDropController extends Component {
                         placementTarget.stopHologramHint();
                     }
                     placementTarget.reveal(); // isPlaced = true здесь, node.active = true
-                    this._shakeCamera();
+                    if (this.shakeCameraOnPlace) {
+                        this._shakeCamera();
+                    }
                     if (placementTarget.node && placementTarget.node.isValid) {
                         const targetScale = placementTarget.node.scale.clone();
                         this._playPlaceEffect(placementTarget.node, targetScale);
@@ -358,12 +444,14 @@ export class DragDropController extends Component {
                     const ps = particleNode.getComponent(ParticleSystem2D);
                     if (ps) ps.stopSystem();
                 }
+                this.dragParticlesEmitting.delete(this.dragClone);
             }
             GlobalEventBus.publish({ type: EVT_ITEM_DRAG_END, item: this.dragOriginal });
         }
         this.isDragging = false;
         this.dragClone = null;
         this.dragOriginal = null;
+        this._dragParticlesStopToken++;
     }
 
     // ─── Спавн предмета ──────────────────────────────────────────────────────
@@ -417,8 +505,12 @@ export class DragDropController extends Component {
         // Стартовая позиция — бокс (устанавливаем ПОСЛЕ setParent)
         const boxWorldPos = this.boxNode?.worldPosition.clone() ?? new Vec3();
         clone.setWorldPosition(boxWorldPos.x, boxWorldPos.y, boxWorldPos.z);
-        clone.getComponent(DraggableItem)?.playInstallParticles();
-        this._shakeCamera();
+        if (this.spawnInstallParticles) {
+            clone.getComponent(DraggableItem)?.playInstallParticles();
+        }
+        if (this.shakeCameraOnSpawn) {
+            this._shakeCamera();
+        }
 
         // Регистрируем клон
         this.activeClones.set(clone, original);
@@ -437,9 +529,20 @@ export class DragDropController extends Component {
             console.warn(`[DragDropController] Animation не найден на клоне "${original.itemId}"`);
         }
 
-        tween(clone)
-            .to(0.35, { worldPosition: landPos }, { easing: 'backOut' })
+        const spawnProgress = { t: 0 };
+        tween(spawnProgress)
+            .to(
+                this.spawnMoveDuration,
+                { t: 1 },
+                {
+                    easing: this._resolveEasing(this.spawnMoveEasing),
+                    onUpdate: (target: { t: number }) => {
+                        clone.setWorldPosition(this._getSpawnArcPosition(boxWorldPos, landPos, target.t));
+                    },
+                },
+            )
             .call(() => {
+                clone.setWorldPosition(landPos);
                 console.log(`[DragDropController] Spawned: "${original.itemId}" — готов к drag`);
                 GlobalEventBus.publish({ type: EVT_ITEM_SPAWNED, item: original, clone });
 
@@ -607,6 +710,20 @@ export class DragDropController extends Component {
             .start();
     }
 
+    private _alignCloneTiltToTarget(cloneNode: Node, target: DraggableItem): void {
+        const cloneSpriteNode = cloneNode.getChildByName('Sprite');
+        const targetSpriteNode = target.node.getChildByName('Sprite') ?? target.node;
+        if (!cloneSpriteNode || !targetSpriteNode) return;
+
+        tween(cloneSpriteNode)
+            .to(
+                this.placementMoveDuration,
+                { eulerAngles: targetSpriteNode.eulerAngles.clone() },
+                { easing: this._resolveEasing(this.placementMoveEasing) },
+            )
+            .start();
+    }
+
     /** Конвертирует экранную точку касания в мировые координаты */
     private _touchToWorld(event: EventTouch): Vec3 {
         const loc = event.getLocation();
@@ -630,11 +747,50 @@ export class DragDropController extends Component {
 
     /** Лёгкий эффект «прыжка» при успешном размещении — возвращается к исходному скейлу */
     private _playPlaceEffect(node: Node, originalScale: Vec3): void {
-        const bigScale = new Vec3(originalScale.x * 1.2, originalScale.y * 1.2, originalScale.z);
+        const punch = Math.max(1, this.placementScalePunch);
+        const bigScale = new Vec3(originalScale.x * punch, originalScale.y * punch, originalScale.z);
         tween(node)
-            .to(0.1, { scale: bigScale })
-            .to(0.15, { scale: originalScale })
+            .to(this.placementScaleUpDuration, { scale: bigScale }, { easing: 'quadOut' })
+            .to(this.placementScaleDownDuration, { scale: originalScale }, { easing: 'sineOut' })
             .start();
+    }
+
+    private _resolveEasing(easing: MotionEasing): (k: number) => number {
+        switch (easing) {
+            case MotionEasing.linear:
+                return k => k;
+            case MotionEasing.smooth:
+                return k => k * k * (3 - 2 * k);
+            case MotionEasing.quadInOut:
+                return k => (k < 0.5 ? 2 * k * k : -1 + (4 - 2 * k) * k);
+            case MotionEasing.sineOut:
+                return k => Math.sin((k * Math.PI) / 2);
+            case MotionEasing.backOut:
+                return k => {
+                    const c1 = 1.70158;
+                    const c3 = c1 + 1;
+                    return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
+                };
+            case MotionEasing.quadOut:
+            default:
+                return k => k * (2 - k);
+        }
+    }
+
+    private _getSpawnArcPosition(start: Vec3, end: Vec3, t: number): Vec3 {
+        const clampedT = Math.max(0, Math.min(1, t));
+        const oneMinusT = 1 - clampedT;
+        const control = new Vec3(
+            (start.x + end.x) * 0.5,
+            Math.max(start.y, end.y) + this.spawnArcHeight,
+            (start.z + end.z) * 0.5,
+        );
+
+        return new Vec3(
+            oneMinusT * oneMinusT * start.x + 2 * oneMinusT * clampedT * control.x + clampedT * clampedT * end.x,
+            oneMinusT * oneMinusT * start.y + 2 * oneMinusT * clampedT * control.y + clampedT * clampedT * end.y,
+            oneMinusT * oneMinusT * start.z + 2 * oneMinusT * clampedT * control.z + clampedT * clampedT * end.z,
+        );
     }
 
     private _trackAppLovinProgress(placed: number, total: number): void {

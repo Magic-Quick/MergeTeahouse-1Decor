@@ -44,6 +44,12 @@ export class Bootstrap extends Component {
     @property({ type: Node, tooltip: 'Нода шкатулки' })
     chestNode: Node | null = null;
 
+    @property({ type: Node, tooltip: 'Нода TapToDecorate (подсказка по тапу)' })
+    tapToDecorateNode: Node | null = null;
+
+    @property({ type: Node, tooltip: 'Нода RoomContainer (фон/комната)' })
+    roomContainerNode: Node | null = null;
+
     @property({ type: DragDropController, tooltip: 'DragDropController на сцене' })
     dragDropController: DragDropController | null = null;
 
@@ -148,7 +154,6 @@ export class Bootstrap extends Component {
             this.ctaNode.setPosition(0, 0, 0);
             this.ctaNode.active = true;
             GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CTA_SHOWN });
-            this._playWinMessageExit();
             console.log('[Bootstrap] CTA активирована');
         } else {
             console.warn('[Bootstrap] ctaNode не назначена — CTA не появится');
@@ -169,8 +174,20 @@ export class Bootstrap extends Component {
         }
 
         winMessageNode.active = true;
+        this._playIfExists(this.chestNode, 'BoxRemove', 'Chest.BoxRemove');
+        this._playIfExists(this.tapToDecorateNode ?? this._findChildDeep(this.node, 'TapToDecorate'), 'TapToDecorateRemove', 'TapToDecorate.Remove');
+        this._playIfExists(this.roomContainerNode ?? this._findChildDeep(this.node, 'RoomContainer'), 'RoomFocus', 'RoomContainer.RoomFocus');
         GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_WIN_MENU_SHOWN });
         console.log('[Bootstrap] WinMessage активирован');
+    }
+
+    private _playIfExists(node: Node | null, clip: string, label: string): void {
+        if (!node || !node.isValid) return;
+        const anim = node.getComponent(Animation);
+        if (!anim) return;
+        anim.stop();
+        anim.play(clip);
+        console.log(`[Bootstrap] ${label}: ${clip}`);
     }
 
     private _playWinMessageExit(): void {
