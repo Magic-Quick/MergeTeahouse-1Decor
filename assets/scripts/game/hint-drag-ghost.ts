@@ -1,4 +1,4 @@
-import { Color, Material, Node, Sprite, tween, Tween, UITransform, Vec3, Vec4 } from 'cc';
+import { Color, Material, Node, Sprite, SpriteFrame, tween, Tween, UITransform, Vec3, Vec4 } from 'cc';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
 
 const MAX_GLOW_LAYERS = 5;
@@ -11,16 +11,25 @@ export class HintDragGhost {
     /** Внешний размер ореола: 1 = как предмет, 1.35 = на 35% шире */
     glowOuterScale: number = 1.38;
     glowColor: Color = new Color(255, 214, 72, 150);
-    /** materials/SpriteSolidFill — только для слоёв Glow, не для Item */
+    /** true = мягкий ореол (LightCircle + additive), false = чёткие силуэты (SpriteSolidFill) */
+    useSoftGlow: boolean = true;
+    /** Задаётся из ManualController.hintGhostSoftGlowSpriteFrame; иначе fallback LightCircle */
+    glowSoftSpriteFrame: SpriteFrame | null = null;
+    /** materials/materialLight-001 — аддитивное свечение */
+    glowAdditiveMaterial: Material | null = null;
+    /** materials/SpriteSolidFill — только если useSoftGlow = false */
     glowMaterial: Material | null = null;
 
     private _root: Node | null = null;
     private _glowSprites: Sprite[] = [];
     private _itemSprite: Sprite | null = null;
     private _glowMaterialInstances: (Material | null)[] = [];
+    private _glowAdditiveInstances: (Material | null)[] = [];
     private _fadeToken = 0;
     private _hostHand: Node | null = null;
     private _followVisualNode: Node | null = null;
+    private _attachedParent: Node | null = null;
+    private _sharedAdditiveMaterial: Material | null = null;
     private readonly _offsetWorld = new Vec3();
     private readonly _fillColorVec4 = new Vec4();
 
@@ -68,9 +77,6 @@ export class HintDragGhost {
     }
 
     syncFollow(): void {
-        if (this._hostHand?.isValid) {
-            this._attachBehindHand(this._hostHand);
-        }
         this._applyTransform();
     }
 
@@ -101,21 +107,19 @@ export class HintDragGhost {
         const roomContainer = this._findAncestorNamed(hostHand, 'RoomContainer');
         const parent = roomContainer ?? hostHand.parent ?? hostHand;
 
-        if (this._root.parent !== parent) {
-            this._root.setParent(parent, false);
+        if (this._attachedParent === parent && this._root.parent === parent) {
+            this._hostHand = hostHand;
+            return;
         }
 
-        if (roomContainer) {
-            const lastIndex = Math.max(0, parent.children.length - 1);
-            if (this._root.getSiblingIndex() !== lastIndex) {
-                this._root.setSiblingIndex(lastIndex);
-            }
-        } else {
-            const handIndex = hostHand.getSiblingIndex();
-            this._root.setSiblingIndex(handIndex);
-            if (hostHand.getSiblingIndex() <= this._root.getSiblingIndex()) {
-                hostHand.setSiblingIndex(this._root.getSiblingIndex() + 1);
-            }
+        this._root.setParent(parent, false);
+        this._attachedParent = parent;
+
+        const handIndex = hostHand.getSiblingIndex();
+        const targetIndex = Math.max(0, handIndex);
+        this._root.setSiblingIndex(targetIndex);
+        if (hostHand.parent === parent && hostHand.getSiblingIndex() <= this._root.getSiblingIndex()) {
+            hostHand.setSiblingIndex(this._root.getSiblingIndex() + 1);
         }
 
         this._hostHand = hostHand;
@@ -186,6 +190,7 @@ export class HintDragGhost {
 
         const layerCount = Math.min(MAX_GLOW_LAYERS, Math.max(2, Math.round(this.glowLayerCount)));
         const outerScale = Math.max(1, this.glowOuterScale);
+        const useSoft = this.useSoftGlow && !!this.glowSoftSpriteFrame && !!this.glowAdditiveMaterial;
 
         for (let i = 0; i < MAX_GLOW_LAYERS; i++) {
             const sprite = this._glowSprites[i];
@@ -200,10 +205,15 @@ export class HintDragGhost {
             const alpha = Math.round(this.glowColor.a * (0.15 + 0.85 * (1 - outerT)));
 
             const glowTransform = sprite.node.getComponent(UITransform)!;
-            glowTransform.setContentSize(width * scaleMul, height * scaleMul);
-
-            sprite.spriteFrame = sourceSprite.spriteFrame;
-            this._applySolidFillMaterial(sprite, i, alpha);
+            if (useSoft) {
+                const softSize = Math.max(width, height) * scaleMul;
+                glowTransform.setContentSize(softSize, softSize);
+                this._applySoftGlowMaterial(sprite, i, alpha);
+            } else {
+                glowTransform.setContentSize(width * scaleMul, height * scaleMul);
+                sprite.spriteFrame = sourceSprite.spriteFrame;
+                this._applySolidFillMaterial(sprite, i, alpha);
+            }
         }
     }
 
@@ -266,6 +276,9 @@ export class HintDragGhost {
         this._itemSprite = null;
         this._glowSprites.length = 0;
         this._glowMaterialInstances.length = 0;
+        this._glowAdditiveInstances.length = 0;
+        this._sharedAdditiveMaterial = null;
+        this._attachedParent = null;
     }
 
     private _collectFadeSprites(): Sprite[] {
@@ -279,6 +292,26 @@ export class HintDragGhost {
             }
         }
         return sprites;
+    }
+
+    private _applySoftGlowMaterial(sprite: Sprite, layerIndex: number, layerAlpha: number): void {
+        const frame = this.glowSoftSpriteFrame;
+        const template = this.glowAdditiveMaterial;
+        if (!frame || !template?.isValid) {
+            sprite.customMaterial = null;
+            sprite.color = new Color(this.glowColor.r, this.glowColor.g, this.glowColor.b, layerAlpha);
+            return;
+        }
+
+        if (!this._sharedAdditiveMaterial?.isValid) {
+            this._sharedAdditiveMaterial = new Material();
+            this._sharedAdditiveMaterial.copy(template);
+        }
+
+        sprite.spriteFrame = frame;
+        sprite.customMaterial = this._sharedAdditiveMaterial;
+        this._glowAdditiveInstances[layerIndex] = this._sharedAdditiveMaterial;
+        sprite.color = new Color(this.glowColor.r, this.glowColor.g, this.glowColor.b, layerAlpha);
     }
 
     private _applySolidFillMaterial(sprite: Sprite, layerIndex: number, layerAlpha: number): void {

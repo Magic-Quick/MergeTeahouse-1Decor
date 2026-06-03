@@ -1,4 +1,4 @@
-import { _decorator, Animation, assetManager, Color, Component, Material, Node, ParticleSystem2D, Sprite, tween, Tween, UITransform, Vec3 } from 'cc';
+import { _decorator, Animation, assetManager, Color, Component, Material, Node, ParticleSystem2D, Sprite, SpriteFrame, tween, Tween, UITransform, Vec3 } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import {
     EVT_CHEST_TAPPED,
@@ -14,6 +14,14 @@ const { ccclass, property } = _decorator;
 
 /** assets/materials/SpriteSolidFill.mtl */
 const HINT_GHOST_GLOW_MATERIAL_UUID = 'd5f9b2e3-0c4e-5f7b-9a2d-3e6f8b0c1d4e';
+/** assets/materials/materialLight-001.mtl */
+const HINT_GHOST_ADDITIVE_MATERIAL_UUID = 'e3b5d001-d67b-4af5-a645-8e7429d06539';
+/** assets/sprites/fx/LightCircle.png */
+const HINT_GHOST_SOFT_FRAME_UUID = 'ba870ec6-c1bd-4e05-97fa-534676ac6225@f9941';
+/** Лимит emissionRate для подсказок — в префабе 300, полный rate вешает превью */
+const HINT_PARTICLE_MAX_EMISSION = 120;
+/** Значение из ParticleHit / ParticleBox, если в кэш попал 0 после stopSystem */
+const HINT_PARTICLE_DEFAULT_EMISSION = 300;
 
 interface ItemSpawnedEvent {
     type: string;
@@ -45,6 +53,12 @@ export class ManualController extends Component {
     @property({ type: Node, tooltip: 'Нода коробки, куда будет указывать первая подсказка' })
     boxNode: Node | null = null;
 
+    @property({
+        type: Node,
+        tooltip: 'Частицы при подсказке на коробку (Canvas/.../Box/ParticleBox). Пусто — ищется под boxNode.',
+    })
+    boxHintParticleNode: Node | null = null;
+
     @property({ tooltip: 'Задержка перед первой подсказкой на коробку, сек' })
     boxHintDelay: number = 3;
 
@@ -66,13 +80,28 @@ export class ManualController extends Component {
     @property({ tooltip: 'Повтор idle-подсказки установки, сек' })
     placementIdleRepeatDelay: number = 5;
 
-    @property({ tooltip: 'Длительность fade-исчезновения эмиттера руки, сек' })
+    @property({ tooltip: 'Длительность плавного гашения эмиттера подсказки (коробка или рука), сек' })
     handParticleFadeDelay: number = 0.8;
+
+    @property({ tooltip: 'Частицы на подсказках. Выключите, если при появлении руки зависает превью.' })
+    enableHintParticles: boolean = true;
 
     @property({ tooltip: 'Локальное смещение копии предмета под пальцем (от UiHand)' })
     hintGhostLocalOffset: Vec3 = new Vec3(35, -130, 0);
 
-    @property({ type: Material, tooltip: 'Материал равномерной заливки (SpriteSolidFill). Если пусто — подгрузится автоматически.' })
+    @property({ tooltip: 'Мягкий размытый ореол (своя текстура + additive). Выключите — чёткие силуэты SpriteSolidFill.' })
+    hintGhostSoftGlow: boolean = true;
+
+    @property({
+        type: SpriteFrame,
+        tooltip: 'Текстура мягкого свечения под предметом. Пусто — подставится LightCircle из assets/sprites/fx.',
+    })
+    hintGhostSoftGlowSpriteFrame: SpriteFrame | null = null;
+
+    @property({ type: Material, tooltip: 'Аддитивный материал свечения (materialLight-001). Пусто — подгрузка.' })
+    hintGhostGlowAdditiveMaterial: Material | null = null;
+
+    @property({ type: Material, tooltip: 'Только при Soft Glow = false: SpriteSolidFill' })
     hintGhostGlowMaterial: Material | null = null;
 
     @property({ tooltip: 'Цвет заливки свечения (RGB)' })
@@ -81,11 +110,11 @@ export class ManualController extends Component {
     @property({ tooltip: 'Прозрачность свечения (0–255)' })
     hintGhostGlowAlpha: number = 150;
 
-    @property({ tooltip: 'Размер жёлтого ореола: 1 = как предмет, 1.4 = на 40% крупнее. Главная настройка размера glow.' })
-    hintGhostGlowOuterScale: number = 1.38;
+    @property({ tooltip: 'Размер мягкого ореола: 1.3–1.6. Чем больше — тем шире размытие вокруг предмета.' })
+    hintGhostGlowOuterScale: number = 1.45;
 
-    @property({ tooltip: 'Слоёв ореола (2–5). Больше = мягче размытие. 1 слой почти без размытия.' })
-    hintGhostBlurLayers: number = 5;
+    @property({ tooltip: 'Сколько мягких слоёв наложить (2–5). Больше — плотнее ореол.' })
+    hintGhostBlurLayers: number = 4;
 
     private _unsubs: Array<() => void> = [];
     private _gameCompleted: boolean = false;
@@ -95,12 +124,18 @@ export class ManualController extends Component {
     private _spawnedHintTargets: SpawnedHintTarget[] = [];
     private _handParticles: ParticleSystem2D[] = [];
     private _handParticleNode: Node | null = null;
-    private _handParticleEmissionRates = new Map<ParticleSystem2D, number>();
-    private _handParticleDefaultColors = new Map<ParticleSystem2D, Color>();
+    private _boxParticles: ParticleSystem2D[] = [];
+    private _boxParticleNode: Node | null = null;
+    private _particleEmissionRates = new Map<ParticleSystem2D, number>();
+    private _particleDefaultColors = new Map<ParticleSystem2D, Color>();
+    private _activeParticleSource: 'hand' | 'box' | null = null;
     private _handSprite: Sprite | null = null;
     private _handSpriteDefaultColor: Color | null = null;
     private _handTapOnComplete: (() => void) | null = null;
-    private _handParticleFadeToken = 0;
+    private _particleFadeToken = 0;
+    private _scheduledParticleFade: (() => void) | null = null;
+    /** Частицы инициализируются лениво — не в onLoad, чтобы не блокировать старт превью */
+    private _particlesReady = false;
     private readonly _hintDragGhost = new HintDragGhost();
     /** Клон из коробки, скрытый на время drag-подсказки (под пальцем показывается HintItemGhost) */
     private _hintGhostHiddenClone: Node | null = null;
@@ -111,8 +146,9 @@ export class ManualController extends Component {
 
     onLoad(): void {
         this._syncHintGhostSettings();
-        this._cacheHandParts();
-        this._hideHand(true);
+        this._cacheHandVisualParts();
+        this._resolveBoxParticleNode();
+        this._hideHandImmediate();
         this._unsubs.push(
             GlobalEventBus.subscribe(EVT_CHEST_TAPPED, () => this._onChestTapped()),
             GlobalEventBus.subscribe<ItemSpawnedEvent>(EVT_ITEM_SPAWNED, (event) => this._onItemSpawned(event)),
@@ -123,20 +159,21 @@ export class ManualController extends Component {
     }
 
     start(): void {
-        this._ensureHintGhostMaterial();
+        this._ensureHintGhostAssets();
         this._scheduleBoxHint(this.boxHintDelay);
     }
 
     onDestroy(): void {
         this.unscheduleAllCallbacks();
-        this._handParticleFadeToken++;
+        this._scheduledParticleFade = null;
+        this._particleFadeToken++;
         this._handTapOnComplete = null;
         const anim = this._getHandAnimation();
         anim?.off(Animation.EventType.FINISHED, this._onHandTapAnimFinished, this);
         if (this.uiHand?.isValid) {
             Tween.stopAllByTarget(this.uiHand);
         }
-        this._cleanupHandParticlesOnDestroy();
+        this._cleanupParticlesOnDestroy();
         this._hintDragGhost.destroy();
         for (const unsub of this._unsubs) unsub();
         this._unsubs.length = 0;
@@ -218,12 +255,12 @@ export class ManualController extends Component {
         if (this._gameCompleted || !this.uiHand?.isValid || !this.boxNode?.isValid) return;
         if (this._getAvailablePlacementTargets().length > 0) return;
 
-        this._prepareHandAt(this.boxNode.worldPosition);
+        this._prepareHandAt(this.boxNode.worldPosition, 'box');
         this._playHandTap(this._onBoxHandTapCycleEnd);
     }
 
     private _onBoxHandTapCycleEnd = (): void => {
-        this._fadeHandParticlesAfterHint();
+        this._fadeParticlesAfterBoxHint();
         this._scheduleBoxHint(this.boxHintRepeatDelay + this.handParticleFadeDelay);
     };
 
@@ -274,7 +311,7 @@ export class ManualController extends Component {
         const startPos = this._getVisualCenterWorld(clone);
         const targetPos = this._getVisualCenterWorld(item.node);
 
-        this._prepareHandAt(startPos);
+        this._prepareHandAt(startPos, 'hand');
         this._showHintGhost(item, clone);
 
         tween(this.uiHand!)
@@ -298,16 +335,41 @@ export class ManualController extends Component {
             this.hintGhostGlowColor.b,
             this.hintGhostGlowAlpha,
         );
+        this._hintDragGhost.useSoftGlow = this.hintGhostSoftGlow;
+        this._hintDragGhost.glowSoftSpriteFrame = this.hintGhostSoftGlowSpriteFrame;
         this._hintDragGhost.glowLayerCount = this.hintGhostBlurLayers;
         this._hintDragGhost.glowOuterScale = this.hintGhostGlowOuterScale;
-        this._hintDragGhost.glowMaterial = this.hintGhostGlowMaterial;
+        this._hintDragGhost.glowAdditiveMaterial = this.hintGhostGlowAdditiveMaterial;
+        this._hintDragGhost.glowMaterial = this.hintGhostSoftGlow ? null : this.hintGhostGlowMaterial;
     }
 
-    private _ensureHintGhostMaterial(): void {
+    private _ensureHintGhostAssets(): void {
+        this._syncHintGhostSettings();
+
+        if (this.hintGhostSoftGlow) {
+            if (!this.hintGhostGlowAdditiveMaterial) {
+                assetManager.loadAny({ uuid: HINT_GHOST_ADDITIVE_MATERIAL_UUID }, (err, asset) => {
+                    if (!err && asset) {
+                        this.hintGhostGlowAdditiveMaterial = asset as Material;
+                        this._syncHintGhostSettings();
+                        this._refreshActiveHintGhost();
+                    }
+                });
+            }
+            if (!this.hintGhostSoftGlowSpriteFrame && !this._hintDragGhost.glowSoftSpriteFrame) {
+                assetManager.loadAny({ uuid: HINT_GHOST_SOFT_FRAME_UUID }, (err, asset) => {
+                    if (!err && asset) {
+                        this._hintDragGhost.glowSoftSpriteFrame = asset as SpriteFrame;
+                        this._refreshActiveHintGhost();
+                    }
+                });
+            }
+            return;
+        }
+
         if (this.hintGhostGlowMaterial) return;
         assetManager.loadAny({ uuid: HINT_GHOST_GLOW_MATERIAL_UUID }, (err, asset) => {
             if (err || !asset) {
-                console.warn('[ManualController] SpriteSolidFill material not loaded', err);
                 return;
             }
             this.hintGhostGlowMaterial = asset as Material;
@@ -360,6 +422,11 @@ export class ManualController extends Component {
         this._clearHandTapCompletion();
         this._handTapOnComplete = onComplete ?? null;
         anim.once(Animation.EventType.FINISHED, this._onHandTapAnimFinished, this);
+        const state = anim.getState('HandTap');
+        if (state) {
+            state.wrapMode = 1;
+            state.repeatCount = 1;
+        }
         anim.play('HandTap');
     }
 
@@ -380,35 +447,61 @@ export class ManualController extends Component {
         return this.uiHand.getComponent(Animation);
     }
 
-    /** Плавно гасит эмиттер после цикла HandTap у коробки */
-    private _fadeHandParticlesAfterHint(): void {
+    /** Плавно гасит ParticleBox после цикла HandTap у коробки */
+    private _fadeParticlesAfterBoxHint(): void {
         this._setHandVisualVisible(false);
-        this._runHandParticleFadeOut();
+        if (this._particlesReady) {
+            this._runParticleFadeOut('box');
+        } else if (this.uiHand?.isValid) {
+            this.uiHand.active = false;
+        }
     }
 
     private _hideHand(deactivateHand = false): void {
-        if (!this.uiHand?.isValid) return;
         this._clearHandTapCompletion();
         this._stopHandTweens();
-        this._resetHandAnimation();
-        this._setHandVisualVisible(false);
+
+        if (this.uiHand?.isValid) {
+            this._resetHandAnimation();
+            this._setHandVisualVisible(false);
+        }
 
         this._hideHintGhost(!deactivateHand);
 
         if (deactivateHand) {
-            this._handParticleFadeToken++;
-            this._cancelHandParticleFade(true);
+            this._particleFadeToken++;
+            if (this._particlesReady) {
+                this._cancelParticleFade('hand', true);
+                this._cancelParticleFade('box', true);
+            }
+            this._activeParticleSource = null;
             this._hintDragGhost.hideImmediate();
-            this.uiHand.active = false;
+            if (this.uiHand?.isValid) {
+                this.uiHand.active = false;
+            }
             return;
         }
 
-        this._runHandParticleFadeOut();
+        if (!this.uiHand?.isValid) return;
+
+        if (this._activeParticleSource && this._particlesReady) {
+            this._runParticleFadeOut(this._activeParticleSource);
+        } else {
+            this.uiHand.active = false;
+        }
     }
 
-    /** Отсоединяет эмиттер на Canvas и плавно гасит через alpha частиц */
-    private _runHandParticleFadeOut(onComplete?: () => void): void {
-        this._fadeOutHandParticles(this.handParticleFadeDelay, onComplete);
+    /** Скрыть руку без трогания ParticleSystem (безопасно в onLoad) */
+    private _hideHandImmediate(): void {
+        this._hideHand(true);
+    }
+
+    /** Плавно гасит эмиттер подсказки и скрывает руку */
+    private _runParticleFadeOut(source: 'hand' | 'box', onComplete?: () => void): void {
+        this._fadeOutParticles(source, this.handParticleFadeDelay, () => {
+            this._activeParticleSource = null;
+            onComplete?.();
+        });
         if (this.uiHand?.isValid) {
             this.uiHand.active = false;
         }
@@ -420,16 +513,19 @@ export class ManualController extends Component {
         }
     }
 
-    private _prepareHandAt(worldPos: Vec3): void {
+    private _prepareHandAt(worldPos: Vec3, particleSource: 'hand' | 'box'): void {
         if (!this.uiHand?.isValid) return;
-        this._handParticleFadeToken++;
-        this._cancelHandParticleFade(true);
+        this._ensureParticlesReady();
+        this._particleFadeToken++;
+        this._cancelParticleFade('hand', true);
+        this._cancelParticleFade('box', true);
+        this._activeParticleSource = particleSource;
         this._stopHandTweens();
         this._resetHandTransformForPathHint();
         this.uiHand.active = true;
         this.uiHand.setWorldPosition(worldPos);
         this._showHandVisual();
-        this._startHandParticles();
+        this._startParticles(particleSource);
     }
 
     private _resetHandAnimation(): void {
@@ -450,7 +546,7 @@ export class ManualController extends Component {
         this.uiHand.setScale(this._uiHandDefaultLocalScale);
     }
 
-    private _cacheHandParts(): void {
+    private _cacheHandVisualParts(): void {
         if (!this.uiHand) return;
         this._uiHandDefaultLocalPos.set(this.uiHand.position);
         this._uiHandDefaultLocalEuler.set(this.uiHand.eulerAngles);
@@ -459,9 +555,44 @@ export class ManualController extends Component {
         if (this._handSprite) {
             this._handSpriteDefaultColor = this._handSprite.color.clone();
         }
+    }
+
+    private _ensureParticlesReady(): void {
+        if (!this.enableHintParticles || this._particlesReady) return;
+        this._particlesReady = true;
+        this._initHandParticles();
+        this._initBoxParticles();
+    }
+
+    private _initHandParticles(): void {
+        if (!this.uiHand?.isValid) return;
         const particleDrug = this.uiHand.getChildByName('ParticleDrug');
         this._handParticleNode = particleDrug ?? null;
         this._refreshHandParticles(true);
+        this._stopParticlesIdle('hand');
+    }
+
+    private _initBoxParticles(): void {
+        this._resolveBoxParticleNode();
+        this._refreshBoxParticles(true);
+        this._stopParticlesIdle('box');
+    }
+
+    private _resolveBoxParticleNode(): void {
+        if (this.boxHintParticleNode?.isValid) {
+            this._boxParticleNode = this.boxHintParticleNode;
+            return;
+        }
+        if (!this.boxNode?.isValid) {
+            this._boxParticleNode = null;
+            return;
+        }
+        if (this.boxNode === this.node || this.boxNode === this.uiHand) {
+            console.warn('[ManualController] boxNode указывает на Canvas/UiHand — ParticleBox не ищем');
+            this._boxParticleNode = null;
+            return;
+        }
+        this._boxParticleNode = this._findChildByName(this.boxNode, 'ParticleBox', 32);
     }
 
     private _refreshHandParticles(forceRescan = false): void {
@@ -471,7 +602,7 @@ export class ManualController extends Component {
             );
             if (cached.length > 0) {
                 this._handParticles = cached;
-                this._cacheHandParticleDefaults(cached);
+                this._cacheParticleDefaults(cached);
                 return;
             }
         }
@@ -488,10 +619,8 @@ export class ManualController extends Component {
             if (particleDrug) this._handParticleNode = particleDrug;
 
             const fromDrug = particleDrug?.getComponent(ParticleSystem2D);
-            if (fromDrug) {
+            if (fromDrug?.isValid) {
                 resolved.push(fromDrug);
-            } else {
-                resolved.push(...this.uiHand.getComponentsInChildren(ParticleSystem2D));
             }
         }
 
@@ -508,30 +637,97 @@ export class ManualController extends Component {
         }
 
         this._handParticles = resolved.filter((particles) => particles?.isValid && particles.node?.isValid);
-        this._cacheHandParticleDefaults(this._handParticles);
+        this._cacheParticleDefaults(this._handParticles);
     }
 
-    private _cacheHandParticleDefaults(particles: ParticleSystem2D[]): void {
+    private _stopParticlesIdle(source: 'hand' | 'box'): void {
+        this._refreshParticles(source);
+        for (const particles of this._getParticles(source)) {
+            if (!particles?.isValid) continue;
+            particles.emissionRate = 0;
+            particles.stopSystem();
+        }
+    }
+
+    private _findChildByName(root: Node, name: string, budget = 64): Node | null {
+        if (!root.isValid || budget <= 0) return null;
+        if (root.name === name) return root;
+        for (const child of root.children) {
+            const found = this._findChildByName(child, name, budget - 1);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    private _refreshBoxParticles(forceRescan = false): void {
+        if (!forceRescan) {
+            const cached = this._boxParticles.filter(
+                (particles) => particles?.isValid && particles.node?.isValid,
+            );
+            if (cached.length > 0) {
+                this._boxParticles = cached;
+                this._cacheParticleDefaults(cached);
+                return;
+            }
+        }
+
+        const resolved = this._boxParticleNode?.isValid
+            ? this._collectParticleSystems(this._boxParticleNode)
+            : [];
+
+        this._boxParticles = resolved.filter((particles) => particles?.isValid && particles.node?.isValid);
+        this._cacheParticleDefaults(this._boxParticles);
+    }
+
+    private _collectParticleSystems(root: Node): ParticleSystem2D[] {
+        if (!root.isValid) return [];
+        const direct = root.getComponent(ParticleSystem2D);
+        if (direct?.isValid) return [direct];
+        const fromChildren = root.getComponentsInChildren(ParticleSystem2D);
+        return fromChildren.filter((ps) => ps?.isValid && ps.node?.isValid);
+    }
+
+    private _cacheParticleDefaults(particles: ParticleSystem2D[]): void {
         for (const ps of particles) {
             if (!ps?.isValid) continue;
-            if (!this._handParticleEmissionRates.has(ps)) {
-                this._handParticleEmissionRates.set(ps, ps.emissionRate);
+            if (!this._particleEmissionRates.has(ps)) {
+                const rate = ps.emissionRate > 0 ? ps.emissionRate : HINT_PARTICLE_DEFAULT_EMISSION;
+                this._particleEmissionRates.set(ps, rate);
             }
-            if (!this._handParticleDefaultColors.has(ps)) {
-                this._handParticleDefaultColors.set(ps, ps.color.clone());
+            if (!this._particleDefaultColors.has(ps)) {
+                this._particleDefaultColors.set(ps, ps.color.clone());
             }
         }
     }
 
-    private _cleanupHandParticlesOnDestroy(): void {
-        for (const particles of this._handParticles) {
+    private _getParticleHomeNode(source: 'hand' | 'box'): Node | null {
+        return source === 'hand' ? this.uiHand : this._boxParticleNode;
+    }
+
+    private _refreshParticles(source: 'hand' | 'box', forceRescan = false): void {
+        if (source === 'hand') {
+            this._refreshHandParticles(forceRescan);
+            return;
+        }
+        this._refreshBoxParticles(forceRescan);
+    }
+
+    private _getParticles(source: 'hand' | 'box'): ParticleSystem2D[] {
+        return source === 'hand' ? this._handParticles : this._boxParticles;
+    }
+
+    private _cleanupParticlesOnDestroy(): void {
+        if (!this._particlesReady) return;
+        for (const particles of [...this._handParticles, ...this._boxParticles]) {
             if (!particles?.isValid || !particles.node?.isValid) continue;
 
-            Tween.stopAllByTarget(particles);
-            const defaultColor = this._handParticleDefaultColors.get(particles);
+            particles.emissionRate = 0;
+            particles.stopSystem();
+            const defaultColor = this._particleDefaultColors.get(particles);
             if (defaultColor) particles.color = defaultColor.clone();
         }
         this._handParticles = [];
+        this._boxParticles = [];
     }
 
     private _setHandVisualVisible(visible: boolean): void {
@@ -553,38 +749,40 @@ export class ManualController extends Component {
             : new Color(255, 255, 255, 255);
     }
 
-    private _cancelHandParticleFade(resetOpacity: boolean): void {
-        this._refreshHandParticles();
+    private _cancelParticleFade(source: 'hand' | 'box', resetOpacity: boolean): void {
+        if (!this._particlesReady) return;
+        if (this._scheduledParticleFade) {
+            this.unschedule(this._scheduledParticleFade);
+            this._scheduledParticleFade = null;
+        }
+        this._refreshParticles(source);
 
-        for (const particles of this._handParticles) {
-            const particleNode = particles?.node;
-            if (!particleNode?.isValid) continue;
-
-            Tween.stopAllByTarget(particles);
-
+        for (const particles of this._getParticles(source)) {
+            if (!particles?.isValid) continue;
+            particles.emissionRate = 0;
+            particles.stopSystem();
             if (resetOpacity) {
-                const defaultColor = this._handParticleDefaultColors.get(particles);
+                const defaultColor = this._particleDefaultColors.get(particles);
                 if (defaultColor) particles.color = defaultColor.clone();
-            }
-
-            if (this.uiHand?.isValid && particleNode.parent !== this.uiHand) {
-                particleNode.setParent(this.uiHand, true);
             }
         }
     }
 
-    private _fadeOutHandParticles(duration: number, onComplete?: () => void): void {
-        const token = ++this._handParticleFadeToken;
-        if (!this.node?.isValid) {
+    private _fadeOutParticles(source: 'hand' | 'box', duration: number, onComplete?: () => void): void {
+        if (!this.enableHintParticles || !this._particlesReady) {
             onComplete?.();
             return;
         }
 
-        if (this.uiHand?.isValid || this.node?.isValid) {
-            this._refreshHandParticles();
+        if (this._scheduledParticleFade) {
+            this.unschedule(this._scheduledParticleFade);
+            this._scheduledParticleFade = null;
         }
 
-        const activeParticles = this._handParticles.filter(
+        const token = ++this._particleFadeToken;
+        this._refreshParticles(source);
+
+        const activeParticles = this._getParticles(source).filter(
             (particles) => particles?.isValid && particles.node?.isValid,
         );
         if (activeParticles.length === 0) {
@@ -592,76 +790,60 @@ export class ManualController extends Component {
             return;
         }
 
-        const fadeHost = this.node;
-        let pending = activeParticles.length;
-        const finishOne = (): void => {
-            pending -= 1;
-            if (pending === 0 && token === this._handParticleFadeToken) {
-                onComplete?.();
-            }
-        };
-
         for (const particles of activeParticles) {
-            const particleNode = particles.node;
             particles.emissionRate = 0;
-            particleNode.setParent(fadeHost, true);
-            particleNode.active = true;
-
-            const defaultColor = this._handParticleDefaultColors.get(particles) ?? particles.color.clone();
-            const fadeState = { a: defaultColor.a };
-
-            Tween.stopAllByTarget(particles);
-            tween(fadeState)
-                .to(duration, { a: 0 }, {
-                    easing: 'quadOut',
-                    onUpdate: () => {
-                        if (!particles.isValid) return;
-                        const c = defaultColor.clone();
-                        c.a = Math.max(0, Math.round(fadeState.a));
-                        particles.color = c;
-                    },
-                })
-                .call(() => {
-                    if (token !== this._handParticleFadeToken) return;
-                    if (!particleNode.isValid) {
-                        finishOne();
-                        return;
-                    }
-                    if (particles.isValid) {
-                        particles.color = defaultColor.clone();
-                    }
-                    if (this.uiHand?.isValid) {
-                        particleNode.setParent(this.uiHand, true);
-                    }
-                    finishOne();
-                })
-                .start();
+            particles.stopSystem();
         }
+
+        this._scheduledParticleFade = () => {
+            this._scheduledParticleFade = null;
+            if (token !== this._particleFadeToken) return;
+
+            for (const particles of activeParticles) {
+                if (!particles?.isValid) continue;
+                const defaultColor = this._particleDefaultColors.get(particles);
+                if (defaultColor) particles.color = defaultColor.clone();
+            }
+            onComplete?.();
+        };
+        this.scheduleOnce(this._scheduledParticleFade, duration);
     }
 
-    /** Запускает эмиссию заново при появлении руки */
-    private _startHandParticles(): void {
-        this._refreshHandParticles();
-        for (const particles of this._handParticles) {
+    private _resolveHintEmissionRate(particles: ParticleSystem2D): number {
+        const saved = this._particleEmissionRates.get(particles) ?? HINT_PARTICLE_DEFAULT_EMISSION;
+        const base = saved > 0 ? saved : HINT_PARTICLE_DEFAULT_EMISSION;
+        return Math.min(base, HINT_PARTICLE_MAX_EMISSION);
+    }
+
+    /** Запускает эмиссию подсказки (ParticleBox — с resetSystem, иначе не видно после stop) */
+    private _startParticles(source: 'hand' | 'box'): void {
+        if (!this.enableHintParticles || !this._particlesReady) return;
+        this._refreshParticles(source);
+
+        for (const particles of this._getParticles(source)) {
             if (!particles?.isValid || !particles.node?.isValid) continue;
 
-            const particleNode = particles.node;
-            Tween.stopAllByTarget(particles);
-
-            const defaultColor = this._handParticleDefaultColors.get(particles);
+            const defaultColor = this._particleDefaultColors.get(particles);
             if (defaultColor) particles.color = defaultColor.clone();
 
-            if (this.uiHand?.isValid && particleNode.parent !== this.uiHand) {
-                particleNode.setParent(this.uiHand, true);
-            }
-
+            const particleNode = particles.node;
             particleNode.active = true;
             particles.enabled = true;
-            const emissionRate = this._handParticleEmissionRates.get(particles);
-            if (emissionRate !== undefined) {
-                particles.emissionRate = emissionRate;
+
+            const rate = this._resolveHintEmissionRate(particles);
+            particles.emissionRate = rate;
+
+            if (source === 'box') {
+                if (this._boxParticleNode?.isValid) {
+                    this._boxParticleNode.active = true;
+                }
+                particles.resetSystem();
+            } else {
+                particles.stopSystem();
+                if (rate > 0) {
+                    particles.resetSystem();
+                }
             }
-            particles.resetSystem();
         }
     }
 
