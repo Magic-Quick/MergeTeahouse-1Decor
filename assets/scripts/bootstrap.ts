@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Camera, Animation, Button } from 'cc';
+import { _decorator, Component, Node, Camera, Animation, Button, Sprite, Vec3 } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { AudioCatalog } from 'db://assets/scripts/audio/audio-catalog';
 import { AudioController } from 'db://assets/scripts/audio/audio-controller';
@@ -70,6 +70,7 @@ export class Bootstrap extends Component {
 
     private audioController?: AudioController;
     private winMessageNode: Node | null = null;
+    private _winMessageDefaultPos: Vec3 | null = null;
     private _ctaClickNodes: Node[] = [];
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
@@ -118,6 +119,7 @@ export class Bootstrap extends Component {
 
         this.winMessageNode = this._findChildDeep(this.node, 'WinMessage');
         if (this.winMessageNode) {
+            this._winMessageDefaultPos = this.winMessageNode.position.clone();
             this.winMessageNode.active = false;
         }
 
@@ -179,11 +181,59 @@ export class Bootstrap extends Component {
         }
 
         winMessageNode.active = true;
+        this._prepareWinMessageStaticShow(winMessageNode);
         this._playIfExists(this.chestNode, 'BoxRemove', 'Chest.BoxRemove');
         this._playIfExists(this.tapToDecorateNode ?? this._findChildDeep(this.node, 'TapToDecorate'), 'TapToDecorateRemove', 'TapToDecorate.Remove');
-        this._playIfExists(this.roomContainerNode ?? this._findChildDeep(this.node, 'RoomContainer'), 'RoomFocus', 'RoomContainer.RoomFocus');
+        const roomContainer = this.roomContainerNode ?? this._findChildDeep(this.node, 'RoomContainer');
+        this._ensureHappyLoopUnderRoomContainer(roomContainer);
+        this._playIfExists(roomContainer, 'RoomFocus', 'RoomContainer.RoomFocus');
         GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_WIN_MENU_SHOWN });
         console.log('[Bootstrap] WinMessage активирован');
+    }
+
+    /** Показывает WinMessage без клипа WinMessageExit */
+    private _prepareWinMessageStaticShow(node: Node): void {
+        const anim = node.getComponent(Animation);
+        anim?.stop();
+
+        if (this._winMessageDefaultPos) {
+            node.setPosition(this._winMessageDefaultPos);
+        }
+
+        this._resetNodeSpritesVisible(node);
+    }
+
+    private _resetNodeSpritesVisible(node: Node): void {
+        const sprite = node.getComponent(Sprite);
+        if (sprite) {
+            const color = sprite.color.clone();
+            color.a = 255;
+            sprite.color = color;
+        }
+
+        for (const child of node.children) {
+            this._resetNodeSpritesVisible(child);
+        }
+    }
+
+    /**
+     * RoomFocus анимирует дочерний путь "happy_loop".
+     * В сцене персонаж должен быть внутри RoomContainer, не под WinMessage/SparkStars.
+     */
+    private _ensureHappyLoopUnderRoomContainer(roomContainer: Node | null): void {
+        if (!roomContainer?.isValid) return;
+
+        const happyLoop =
+            roomContainer.getChildByName('happy_loop') ?? this._findChildDeep(this.node, 'happy_loop');
+        if (!happyLoop?.isValid) {
+            console.warn('[Bootstrap] happy_loop не найден для RoomFocus');
+            return;
+        }
+
+        if (happyLoop.parent !== roomContainer) {
+            happyLoop.setParent(roomContainer, true);
+        }
+        happyLoop.active = true;
     }
 
     private _playIfExists(node: Node | null, clip: string, label: string): void {
@@ -193,21 +243,6 @@ export class Bootstrap extends Component {
         anim.stop();
         anim.play(clip);
         console.log(`[Bootstrap] ${label}: ${clip}`);
-    }
-
-    private _playWinMessageExit(): void {
-        const winMessageNode = this.winMessageNode ?? this._findChildDeep(this.node, 'WinMessage');
-        const anim = winMessageNode?.getComponent(Animation);
-
-        if (!winMessageNode || !anim) {
-            console.warn('[Bootstrap] WinMessageExit не запущена: WinMessage/Animation не найден');
-            return;
-        }
-
-        winMessageNode.active = true;
-        anim.stop();
-        anim.play('WinMessageExit');
-        console.log('[Bootstrap] WinMessageExit запущена');
     }
 
     private _findChildDeep(root: Node, name: string): Node | null {

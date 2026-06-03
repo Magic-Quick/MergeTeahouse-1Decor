@@ -398,12 +398,12 @@ export class DragDropController extends Component {
                         const targetScale = placementTarget.node.scale.clone();
                         this._playPlaceEffect(placementTarget.node, targetScale);
                     }
+                    GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: placementTarget });
                     // Проверяем завершение ПОСЛЕ reveal() — теперь isPlaced корректен
                     this._checkCompletion();
                 })
                 .start();
 
-            GlobalEventBus.publish({ type: EVT_ITEM_PLACED, item: placementTarget });
             GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_ITEM_PLACED });
             console.log(`[DragDropController] Placed: "${original.itemId}" -> "${placementTarget.node.name}"`);
         } else {
