@@ -1051,7 +1051,7 @@
       "_spriteFrame"
     ],
     "value": {
-      "__uuid__": "ff232e63-6725-4019-a4d9-49adcd347c0c@f9941",
+      "__uuid__": "3d282219-3c36-4590-a554-35f966da1741@f9941",
       "__expectedType__": "cc.SpriteFrame"
     }
   },
@@ -1100,7 +1100,10 @@
     "propertyPath": [
       "_customMaterial"
     ],
-    "value": null
+    "value": {
+      "__uuid__": "3ce7abbc-8fa5-45b8-97af-4b33a81ea7e4",
+      "__expectedType__": "cc.Material"
+    }
   },
   {
     "__type__": "CCPropertyOverrideInfo",
@@ -1261,7 +1264,7 @@
     "propertyPath": [
       "startSize"
     ],
-    "value": 50
+    "value": 100
   },
   {
     "__type__": "CCPropertyOverrideInfo",

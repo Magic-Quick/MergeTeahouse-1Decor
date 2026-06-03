@@ -22,6 +22,7 @@ import {
     SOUND_ROOM_COMPLETE,
 } from 'db://assets/scripts/common/events';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
+import { DraggableItemSlot } from 'db://assets/scripts/game/draggable-item-slot';
 import { CameraShake } from 'db://assets/scripts/CameraShake';
 import { AppLovinAnalytics } from 'db://assets/scripts/core/AppLovinAnalytics';
 
@@ -64,8 +65,8 @@ Enum(MotionEasing);
 @ccclass('DragDropController')
 export class DragDropController extends Component {
 
-    @property([DraggableItem])
-    itemSlots: DraggableItem[] = [];
+    @property({ type: [DraggableItemSlot], tooltip: 'Слоты предметов: ссылка + spawn scale при вылете из коробки' })
+    itemSlots: DraggableItemSlot[] = [];
 
     @property({ type: Node, tooltip: 'Нода шкатулки (BoxClosed/BoxOpened)' })
     boxNode: Node | null = null;
@@ -195,9 +196,9 @@ export class DragDropController extends Component {
         this._gameCompleted = false;
 
         // Скрываем все оригиналы — они ждут своих drag-копий
-        for (const item of this.itemSlots) {
-            if (this._isValidItemSlot(item)) {
-                item.hide();
+        for (const slot of this.itemSlots) {
+            if (this._isValidItemSlot(slot)) {
+                slot.item.hide();
             }
         }
         // Скрываем CTA
@@ -372,10 +373,14 @@ export class DragDropController extends Component {
             this.missCount.delete(clone);
             this.cloneTilt.delete(clone);
             this._alignCloneTiltToTarget(clone, placementTarget);
+            const targetScale = placementTarget.node.scale.clone();
             tween(clone)
                 .to(
                     this.placementMoveDuration,
-                    { worldPosition: placementTarget.targetWorldPos },
+                    {
+                        worldPosition: placementTarget.targetWorldPos,
+                        scale: targetScale,
+                    },
                     { easing: this._resolveEasing(this.placementMoveEasing) },
                 )
                 .call(() => {
@@ -460,12 +465,13 @@ export class DragDropController extends Component {
         // Ищем следующий незанятый предмет (цикл — нет риска stack overflow)
         let item: DraggableItem | null = null;
         while (this.currentIndex < this.itemSlots.length) {
-            const candidate = this.itemSlots[this.currentIndex];
+            const slot = this.itemSlots[this.currentIndex];
             this.currentIndex++;
-            if (!candidate || !candidate.node || !candidate.node.isValid) {
+            if (!this._isValidItemSlot(slot)) {
                 console.warn(`[DragDropController] itemSlots[${this.currentIndex - 1}] null или невалиден — пропускаем`);
                 continue;
             }
+            const candidate = slot.item;
             if (!candidate.isPlaced && !this._hasActiveCloneFor(candidate)) {
                 item = candidate;
                 break;
@@ -505,6 +511,13 @@ export class DragDropController extends Component {
         // Стартовая позиция — бокс (устанавливаем ПОСЛЕ setParent)
         const boxWorldPos = this.boxNode?.worldPosition.clone() ?? new Vec3();
         clone.setWorldPosition(boxWorldPos.x, boxWorldPos.y, boxWorldPos.z);
+        const placedScale = original.node.scale;
+        const spawnScaleMul = this._getSpawnScaleForItem(original);
+        clone.setScale(
+            placedScale.x * spawnScaleMul,
+            placedScale.y * spawnScaleMul,
+            placedScale.z * spawnScaleMul,
+        );
         if (this.spawnInstallParticles) {
             clone.getComponent(DraggableItem)?.playInstallParticles();
         }
@@ -572,7 +585,9 @@ export class DragDropController extends Component {
 
     /** Проверяет все ли предметы размещены. Если да — показывает ctaNode */
     private _checkCompletion(): void {
-        const validItems = this.itemSlots.filter(item => this._isValidItemSlot(item));
+        const validItems = this.itemSlots
+            .filter(slot => this._isValidItemSlot(slot))
+            .map(slot => slot.item);
         const placed = validItems.filter(item => item.isPlaced).length;
         const total = validItems.length;
         console.log(`[DragDropController] Completion check: ${placed}/${total} размещено. ctaNode=${!!this.ctaNode}`);
@@ -603,24 +618,26 @@ export class DragDropController extends Component {
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     private _repairItemSlotsIfNeeded(): void {
-        const validSerializedSlots = this.itemSlots.filter(item => this._isValidItemSlot(item));
+        this._migrateLegacyItemSlots();
+
+        const validSerializedSlots = this.itemSlots.filter(slot => this._isValidItemSlot(slot));
         const slotsLayer = this._findChildDeep(this.node, 'Slots-layer');
-        const sceneSlots = slotsLayer
+        const sceneItems = slotsLayer
             ? slotsLayer.getComponentsInChildren(DraggableItem)
-                .filter(item => this._isValidItemSlot(item) && item.node !== slotsLayer)
+                .filter(item => this._isValidDraggableItem(item) && item.node !== slotsLayer)
             : [];
 
-        if (sceneSlots.length === 0) {
+        if (sceneItems.length === 0) {
             this.itemSlots = validSerializedSlots;
             console.warn(`[DragDropController] Slots-layer не найден или не содержит DraggableItem. Валидных itemSlots: ${this.itemSlots.length}`);
             return;
         }
 
         const hasBrokenSerializedSlots = validSerializedSlots.length !== this.itemSlots.length;
-        const hasIncompleteSerializedSlots = validSerializedSlots.length < sceneSlots.length;
+        const hasIncompleteSerializedSlots = validSerializedSlots.length < sceneItems.length;
 
         if (hasBrokenSerializedSlots || hasIncompleteSerializedSlots) {
-            this.itemSlots = sceneSlots;
+            this.itemSlots = sceneItems.map(item => this._wrapItemSlot(item));
             this.currentIndex = 0;
             console.log(`[DragDropController] itemSlots восстановлен из Slots-layer: ${this.itemSlots.length}`);
             return;
@@ -629,7 +646,39 @@ export class DragDropController extends Component {
         this.itemSlots = validSerializedSlots;
     }
 
-    private _isValidItemSlot(item: DraggableItem | null | undefined): item is DraggableItem {
+    /** Старые сцены могли хранить в itemSlots ссылки на DraggableItem напрямую */
+    private _migrateLegacyItemSlots(): void {
+        if (this.itemSlots.length === 0) return;
+        const first = this.itemSlots[0] as DraggableItemSlot | DraggableItem;
+        if (!(first instanceof DraggableItem)) return;
+
+        const legacyItems = this.itemSlots as unknown as DraggableItem[];
+        this.itemSlots = legacyItems.map(item => this._wrapItemSlot(item));
+        console.log(`[DragDropController] itemSlots мигрирован в DraggableItemSlot: ${this.itemSlots.length}`);
+    }
+
+    private _wrapItemSlot(item: DraggableItem, spawnScale = 1): DraggableItemSlot {
+        const existing = this.itemSlots.find(slot => slot?.item === item);
+        const slot = new DraggableItemSlot();
+        slot.item = item;
+        slot.spawnScale = existing?.spawnScale ?? spawnScale;
+        return slot;
+    }
+
+    private _getSpawnScaleForItem(item: DraggableItem): number {
+        for (const slot of this.itemSlots) {
+            if (slot?.item === item) {
+                return slot.spawnScale;
+            }
+        }
+        return 1;
+    }
+
+    private _isValidItemSlot(slot: DraggableItemSlot | null | undefined): slot is DraggableItemSlot {
+        return !!slot && this._isValidDraggableItem(slot.item);
+    }
+
+    private _isValidDraggableItem(item: DraggableItem | null | undefined): item is DraggableItem {
         return !!item && item instanceof DraggableItem && !!item.node && item.node.isValid;
     }
 
@@ -637,8 +686,9 @@ export class DragDropController extends Component {
         let nearest: DraggableItem | null = null;
         let nearestDist = Number.POSITIVE_INFINITY;
 
-        for (const candidate of this.itemSlots) {
-            if (!this._isValidItemSlot(candidate)) continue;
+        for (const slot of this.itemSlots) {
+            if (!this._isValidItemSlot(slot)) continue;
+            const candidate = slot.item;
             if (candidate.isPlaced) continue;
             if (candidate.itemId !== original.itemId) continue;
 

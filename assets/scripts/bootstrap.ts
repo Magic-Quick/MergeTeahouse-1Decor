@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Camera, Animation } from 'cc';
+import { _decorator, Component, Node, Camera, Animation, Button } from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { AudioCatalog } from 'db://assets/scripts/audio/audio-catalog';
 import { AudioController } from 'db://assets/scripts/audio/audio-controller';
@@ -70,6 +70,7 @@ export class Bootstrap extends Component {
 
     private audioController?: AudioController;
     private winMessageNode: Node | null = null;
+    private _ctaClickNodes: Node[] = [];
 
     // ─── Lifecycle ───────────────────────────────────────────────────────────
 
@@ -79,11 +80,13 @@ export class Bootstrap extends Component {
         AppLovinAnalytics.impression();
         this._initAudio();
         this._initGame();
+        this._bindCtaClicks();
         this._subscribeToEvents();
         console.log('[Bootstrap] Инициализация завершена');
     }
 
     onDestroy(): void {
+        this._unbindCtaClicks();
         this.audioController?.stop();
         this.audioController = undefined;
         this._unsubscribeComplete?.();
@@ -141,6 +144,7 @@ export class Bootstrap extends Component {
 
     private _onGameComplete(): void {
         AppLovinAnalytics.win();
+        superHtmlPlayable.game_end();
         this._showWinMessage();
 
         const ctaDelay = this.gameConfig?.ctaDelay ?? 0;
@@ -153,6 +157,7 @@ export class Bootstrap extends Component {
         if (this.ctaNode) {
             this.ctaNode.setPosition(0, 0, 0);
             this.ctaNode.active = true;
+            this._bindCtaClicks();
             GlobalEventBus.publish({ type: EVT_PLAY_SOUND, soundId: SOUND_CTA_SHOWN });
             console.log('[Bootstrap] CTA активирована');
         } else {
@@ -214,5 +219,40 @@ export class Bootstrap extends Component {
         }
 
         return null;
+    }
+
+    /** Клик по CtaNode / BtnPlayNow → store (Mintegral: window.install) */
+    private _bindCtaClicks(): void {
+        if (!this.ctaNode) return;
+
+        const targets = new Set<Node>();
+        targets.add(this.ctaNode);
+        const btn = this._findChildDeep(this.ctaNode, 'BtnPlayNow');
+        if (btn) targets.add(btn);
+
+        for (const node of targets) {
+            if (!node.isValid || this._ctaClickNodes.includes(node)) continue;
+            let button = node.getComponent(Button);
+            if (!button) {
+                button = node.addComponent(Button);
+                button.transition = Button.Transition.NONE;
+            }
+            node.on(Button.EventType.CLICK, this._onCtaClick, this);
+            this._ctaClickNodes.push(node);
+        }
+    }
+
+    private _unbindCtaClicks(): void {
+        for (const node of this._ctaClickNodes) {
+            if (node.isValid) {
+                node.off(Button.EventType.CLICK, this._onCtaClick, this);
+            }
+        }
+        this._ctaClickNodes.length = 0;
+    }
+
+    private _onCtaClick(): void {
+        console.log('[Bootstrap] CTA click → download');
+        superHtmlPlayable.download();
     }
 }
