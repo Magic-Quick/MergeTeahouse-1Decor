@@ -1,7 +1,14 @@
-import { Color, Material, Node, Sprite, SpriteFrame, tween, Tween, UITransform, Vec3, Vec4 } from 'cc';
+import { Color, Material, Node, Sprite, SpriteFrame, tween, Tween, UITransform, Vec2, Vec3, Vec4 } from 'cc';
 import { DraggableItem } from 'db://assets/scripts/game/draggable-item';
 
 const MAX_GLOW_LAYERS = 5;
+
+const GLOW_OFFSET_DIRS: ReadonlyArray<Readonly<{ x: number; y: number }>> = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+];
 
 /** Копия предмета под пальцем: оригинальный спрайт + жёлтое свечение сзади */
 export class HintDragGhost {
@@ -11,13 +18,20 @@ export class HintDragGhost {
     /** Внешний размер ореола: 1 = как предмет, 1.35 = на 35% шире */
     glowOuterScale: number = 1.38;
     glowColor: Color = new Color(255, 214, 72, 150);
-    /** true = мягкий ореол (LightCircle + additive), false = чёткие силуэты (SpriteSolidFill) */
-    useSoftGlow: boolean = true;
+    /** true = круглая текстура (BlurCircle). false = контур предмета + размытие (SpriteContourGlow) */
+    useSoftGlow: boolean = false;
     /** Задаётся из ManualController.hintGhostSoftGlowSpriteFrame; иначе fallback LightCircle */
     glowSoftSpriteFrame: SpriteFrame | null = null;
-    /** materials/materialLight-001 — аддитивное свечение */
+    /** materials/materialLight-001 — только для круглой текстуры */
     glowAdditiveMaterial: Material | null = null;
-    /** materials/SpriteSolidFill — только если useSoftGlow = false */
+    /** materials/SpriteContourGlow — свечение по форме с размытием */
+    glowContourMaterial: Material | null = null;
+    /** Радиус размытия в UV (0.02–0.08) */
+    glowRadius: number = 0.035;
+    /** Мягкость falloff кольцевых сэмплов (0–1) */
+    glowSoftness: number = 0.65;
+    glowIntensity: number = 1.0;
+    /** materials/SpriteSolidFill — запасной вариант без шейдера */
     glowMaterial: Material | null = null;
 
     private _root: Node | null = null;
@@ -32,6 +46,11 @@ export class HintDragGhost {
     private _sharedAdditiveMaterial: Material | null = null;
     private readonly _offsetWorld = new Vec3();
     private readonly _fillColorVec4 = new Vec4();
+    private readonly _glowColorVec4 = new Vec4();
+    private readonly _glowTextureSize = new Vec2(256, 256);
+    private _glowContentScaleX = 1;
+    private _glowContentScaleY = 1;
+    private _glowRadiusTexels = 8;
 
     isShowing(): boolean {
         return !!this._root?.isValid && this._root.active;
@@ -188,9 +207,21 @@ export class HintDragGhost {
         this._itemSprite.color = sourceSprite.color.clone();
         this._itemSprite.node.active = true;
 
-        const layerCount = Math.min(MAX_GLOW_LAYERS, Math.max(2, Math.round(this.glowLayerCount)));
         const outerScale = Math.max(1, this.glowOuterScale);
-        const useSoft = this.useSoftGlow && !!this.glowSoftSpriteFrame && !!this.glowAdditiveMaterial;
+        const useCircle = this.useSoftGlow && !!this.glowSoftSpriteFrame && !!this.glowAdditiveMaterial;
+        const useContour = !useCircle && !!this.glowContourMaterial?.isValid;
+        const layerCount = useContour
+            ? Math.min(MAX_GLOW_LAYERS, Math.max(1, Math.round(this.glowLayerCount)))
+            : Math.min(MAX_GLOW_LAYERS, Math.max(2, Math.round(this.glowLayerCount)));
+
+        const glowPadding = useContour ? this._calcGlowPadding(width, height, outerScale) : 0;
+        const expandedWidth = width + glowPadding * 2;
+        const expandedHeight = height + glowPadding * 2;
+        if (useContour) {
+            this._glowContentScaleX = width / expandedWidth;
+            this._glowContentScaleY = height / expandedHeight;
+            this._updateGlowTextureMetrics(sourceSprite.spriteFrame, width, height);
+        }
 
         for (let i = 0; i < MAX_GLOW_LAYERS; i++) {
             const sprite = this._glowSprites[i];
@@ -198,14 +229,42 @@ export class HintDragGhost {
 
             const layerActive = i < layerCount;
             sprite.node.active = layerActive;
+            sprite.enabled = layerActive;
             if (!layerActive) continue;
+
+            const glowTransform = sprite.node.getComponent(UITransform)!;
+
+            if (useContour) {
+                sprite.node.setScale(1, 1, 1);
+                sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+                sprite.spriteFrame = sourceSprite.spriteFrame;
+
+                if (i === 0) {
+                    glowTransform.setContentSize(expandedWidth, expandedHeight);
+                    sprite.node.setPosition(0, 0, 0);
+                    this._applyContourGlowMaterial(sprite, i);
+                    continue;
+                }
+
+                const offsetIndex = i - 1;
+                const dir = GLOW_OFFSET_DIRS[offsetIndex % GLOW_OFFSET_DIRS.length];
+                const ring = Math.floor(offsetIndex / GLOW_OFFSET_DIRS.length) + 1;
+                const spreadPx = Math.max(1.5, glowPadding * 0.22 * ring);
+                glowTransform.setContentSize(width, height);
+                sprite.node.setPosition(dir.x * spreadPx, dir.y * spreadPx, 0);
+                const alpha = Math.round(this.glowColor.a * (0.18 + 0.42 * (1 - offsetIndex / Math.max(1, layerCount - 1))));
+                this._applySolidFillMaterial(sprite, i, alpha);
+                continue;
+            }
+
+            sprite.node.setPosition(0, 0, 0);
+            sprite.node.setScale(1, 1, 1);
 
             const outerT = layerCount <= 1 ? 0 : i / (layerCount - 1);
             const scaleMul = 1 + (outerScale - 1) * (1 - outerT);
             const alpha = Math.round(this.glowColor.a * (0.15 + 0.85 * (1 - outerT)));
 
-            const glowTransform = sprite.node.getComponent(UITransform)!;
-            if (useSoft) {
+            if (useCircle) {
                 const softSize = Math.max(width, height) * scaleMul;
                 glowTransform.setContentSize(softSize, softSize);
                 this._applySoftGlowMaterial(sprite, i, alpha);
@@ -312,6 +371,66 @@ export class HintDragGhost {
         sprite.customMaterial = this._sharedAdditiveMaterial;
         this._glowAdditiveInstances[layerIndex] = this._sharedAdditiveMaterial;
         sprite.color = new Color(this.glowColor.r, this.glowColor.g, this.glowColor.b, layerAlpha);
+    }
+
+    private _createContourMaterialInstance(template: Material): Material {
+        const instance = new Material();
+        instance.copy(template);
+        return instance;
+    }
+
+    private _calcGlowPadding(width: number, height: number, outerScale: number): number {
+        const maxDim = Math.max(width, height);
+        const spread = Math.max(0, outerScale - 1);
+        const fromScale = spread * 0.5 * maxDim;
+        const fromRadius = this.glowRadius * maxDim;
+        return Math.max(8, Math.ceil(fromScale + fromRadius));
+    }
+
+    private _updateGlowTextureMetrics(spriteFrame: SpriteFrame, width: number, height: number): void {
+        const texture = spriteFrame.texture;
+        const texW = texture?.width ?? width;
+        const texH = texture?.height ?? height;
+        this._glowTextureSize.set(texW, texH);
+        this._glowRadiusTexels = Math.max(2, this.glowRadius * Math.max(texW, texH));
+    }
+
+    private _applyMaterialProperties(material: Material): void {
+        this._glowColorVec4.set(
+            this.glowColor.r / 255,
+            this.glowColor.g / 255,
+            this.glowColor.b / 255,
+            this.glowColor.a / 255,
+        );
+        material.setProperty('glowColor', this._glowColorVec4);
+        material.setProperty('textureSize', this._glowTextureSize);
+        material.setProperty('glowRadius', this._glowRadiusTexels);
+        material.setProperty('glowIntensity', this.glowIntensity);
+        material.setProperty('glowSoftness', this.glowSoftness);
+        material.setProperty('contentScaleX', this._glowContentScaleX);
+        material.setProperty('contentScaleY', this._glowContentScaleY);
+    }
+
+    private _applyContourGlowMaterial(sprite: Sprite, layerIndex: number): void {
+        const template = this.glowContourMaterial;
+        if (!template?.isValid) {
+            this._applyBuiltinGlowFallback(sprite, this.glowColor.a);
+            return;
+        }
+
+        const instance = this._createContourMaterialInstance(template);
+        try {
+            this._applyMaterialProperties(instance);
+        } catch (e) {
+            console.warn('[HintDragGhost] SpriteContourGlow setProperty failed', e);
+            this._applyBuiltinGlowFallback(sprite, this.glowColor.a);
+            return;
+        }
+
+        sprite.customMaterial = instance;
+        this._glowMaterialInstances[layerIndex] = instance;
+        sprite.color = new Color(255, 255, 255, 255);
+        sprite.markForUpdateRenderData();
     }
 
     private _applySolidFillMaterial(sprite: Sprite, layerIndex: number, layerAlpha: number): void {

@@ -12,7 +12,9 @@ import { HintDragGhost } from 'db://assets/scripts/game/hint-drag-ghost';
 
 const { ccclass, property } = _decorator;
 
-/** assets/materials/SpriteSolidFill.mtl */
+/** assets/materials/SpriteContourGlow.mtl */
+const HINT_GHOST_CONTOUR_MATERIAL_UUID = 'e8a4c3f2-5b6d-4f7a-8e2d-4f9b0c1d3e5a';
+/** assets/materials/SpriteSolidFill.mtl — запасной fallback */
 const HINT_GHOST_GLOW_MATERIAL_UUID = 'd5f9b2e3-0c4e-5f7b-9a2d-3e6f8b0c1d4e';
 /** assets/materials/materialLight-001.mtl */
 const HINT_GHOST_ADDITIVE_MATERIAL_UUID = 'e3b5d001-d67b-4af5-a645-8e7429d06539';
@@ -89,8 +91,8 @@ export class ManualController extends Component {
     @property({ tooltip: 'Локальное смещение копии предмета под пальцем (от UiHand)' })
     hintGhostLocalOffset: Vec3 = new Vec3(35, -130, 0);
 
-    @property({ tooltip: 'Мягкий размытый ореол (своя текстура + additive). Выключите — чёткие силуэты SpriteSolidFill.' })
-    hintGhostSoftGlow: boolean = true;
+    @property({ tooltip: 'Круглая текстура (BlurCircle). Выключено = свечение по форме предмета (SpriteContourGlow).' })
+    hintGhostSoftGlow: boolean = false;
 
     @property({
         type: SpriteFrame,
@@ -101,8 +103,17 @@ export class ManualController extends Component {
     @property({ type: Material, tooltip: 'Аддитивный материал свечения (materialLight-001). Пусто — подгрузка.' })
     hintGhostGlowAdditiveMaterial: Material | null = null;
 
-    @property({ type: Material, tooltip: 'Только при Soft Glow = false: SpriteSolidFill' })
+    @property({ type: Material, tooltip: 'Свечение по контуру: SpriteContourGlow. Пусто — подгрузка.' })
+    hintGhostContourGlowMaterial: Material | null = null;
+
+    @property({ type: Material, tooltip: 'Запасной fallback: SpriteSolidFill (чёткие слои, без размытия)' })
     hintGhostGlowMaterial: Material | null = null;
+
+    @property({ tooltip: 'Мягкость размытия контура (0–1), для SpriteContourGlow' })
+    hintGhostGlowSoftness: number = 0.65;
+
+    @property({ tooltip: 'Яркость ореола (0–2), для SpriteContourGlow' })
+    hintGhostGlowIntensity: number = 1.2;
 
     @property({ tooltip: 'Цвет заливки свечения (RGB)' })
     hintGhostGlowColor: Color = new Color(255, 214, 72, 255);
@@ -110,10 +121,10 @@ export class ManualController extends Component {
     @property({ tooltip: 'Прозрачность свечения (0–255)' })
     hintGhostGlowAlpha: number = 150;
 
-    @property({ tooltip: 'Размер мягкого ореола: 1.3–1.6. Чем больше — тем шире размытие вокруг предмета.' })
-    hintGhostGlowOuterScale: number = 1.45;
+    @property({ tooltip: 'Ширина ореола: для контура — радиус размытия; для круга — масштаб текстуры (1.2–1.6).' })
+    hintGhostGlowOuterScale: number = 1.38;
 
-    @property({ tooltip: 'Сколько мягких слоёв наложить (2–5). Больше — плотнее ореол.' })
+    @property({ tooltip: 'Только для круглой текстуры / fallback-слоёв (2–5)' })
     hintGhostBlurLayers: number = 4;
 
     private _unsubs: Array<() => void> = [];
@@ -340,7 +351,17 @@ export class ManualController extends Component {
         this._hintDragGhost.glowLayerCount = this.hintGhostBlurLayers;
         this._hintDragGhost.glowOuterScale = this.hintGhostGlowOuterScale;
         this._hintDragGhost.glowAdditiveMaterial = this.hintGhostGlowAdditiveMaterial;
-        this._hintDragGhost.glowMaterial = this.hintGhostSoftGlow ? null : this.hintGhostGlowMaterial;
+        this._hintDragGhost.glowContourMaterial = this.hintGhostContourGlowMaterial;
+        this._hintDragGhost.glowRadius = this._resolveHintGlowRadius();
+        this._hintDragGhost.glowSoftness = this.hintGhostGlowSoftness;
+        this._hintDragGhost.glowIntensity = this.hintGhostGlowIntensity;
+        this._hintDragGhost.glowMaterial = this.hintGhostGlowMaterial;
+    }
+
+    /** Outer Scale 1.0–1.6 → UV-радиус размытия контура */
+    private _resolveHintGlowRadius(): number {
+        const scale = Math.max(1, this.hintGhostGlowOuterScale);
+        return 0.035 + (scale - 1) * 0.09;
     }
 
     private _ensureHintGhostAssets(): void {
@@ -367,15 +388,25 @@ export class ManualController extends Component {
             return;
         }
 
-        if (this.hintGhostGlowMaterial) return;
-        assetManager.loadAny({ uuid: HINT_GHOST_GLOW_MATERIAL_UUID }, (err, asset) => {
-            if (err || !asset) {
-                return;
-            }
-            this.hintGhostGlowMaterial = asset as Material;
-            this._syncHintGhostSettings();
-            this._refreshActiveHintGhost();
-        });
+        if (!this.hintGhostContourGlowMaterial) {
+            assetManager.loadAny({ uuid: HINT_GHOST_CONTOUR_MATERIAL_UUID }, (err, asset) => {
+                if (!err && asset) {
+                    this.hintGhostContourGlowMaterial = asset as Material;
+                    this._syncHintGhostSettings();
+                    this._refreshActiveHintGhost();
+                }
+            });
+        }
+
+        if (!this.hintGhostGlowMaterial) {
+            assetManager.loadAny({ uuid: HINT_GHOST_GLOW_MATERIAL_UUID }, (err, asset) => {
+                if (!err && asset) {
+                    this.hintGhostGlowMaterial = asset as Material;
+                    this._syncHintGhostSettings();
+                    this._refreshActiveHintGhost();
+                }
+            });
+        }
     }
 
     private _showHintGhost(item: DraggableItem, clone: Node): void {
