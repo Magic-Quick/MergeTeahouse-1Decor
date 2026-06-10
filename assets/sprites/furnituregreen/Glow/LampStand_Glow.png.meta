@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "e202340b-ecb9-4bf5-a0ab-e5e2f3824e85",
+  "uuid": "0d874f54-8d67-423f-9398-509ecc542cab",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "e202340b-ecb9-4bf5-a0ab-e5e2f3824e85@6c48a",
+      "uuid": "0d874f54-8d67-423f-9398-509ecc542cab@6c48a",
       "displayName": "LampStand_Glow",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "e202340b-ecb9-4bf5-a0ab-e5e2f3824e85",
+        "imageUuidOrDatabaseUri": "0d874f54-8d67-423f-9398-509ecc542cab",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,21 +34,21 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "e202340b-ecb9-4bf5-a0ab-e5e2f3824e85@f9941",
+      "uuid": "0d874f54-8d67-423f-9398-509ecc542cab@f9941",
       "displayName": "LampStand_Glow",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
         "trimThreshold": 1,
         "rotated": false,
-        "offsetX": 0,
+        "offsetX": -0.5,
         "offsetY": 1,
-        "trimX": 2,
-        "trimY": 0,
-        "width": 88,
-        "height": 122,
-        "rawWidth": 92,
-        "rawHeight": 124,
+        "trimX": 3,
+        "trimY": 1,
+        "width": 39,
+        "height": 58,
+        "rawWidth": 46,
+        "rawHeight": 62,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -60,17 +60,17 @@
         "meshType": 0,
         "vertices": {
           "rawPosition": [
-            -44,
-            -61,
+            -19.5,
+            -29,
             0,
-            44,
-            -61,
+            19.5,
+            -29,
             0,
-            -44,
-            61,
+            -19.5,
+            29,
             0,
-            44,
-            61,
+            19.5,
+            29,
             0
           ],
           "indexes": [
@@ -82,38 +82,38 @@
             3
           ],
           "uv": [
-            2,
-            124,
-            90,
-            124,
-            2,
-            2,
-            90,
-            2
+            3,
+            61,
+            42,
+            61,
+            3,
+            3,
+            42,
+            3
           ],
           "nuv": [
-            0.021739130434782608,
-            0.016129032258064516,
-            0.9782608695652174,
-            0.016129032258064516,
-            0.021739130434782608,
-            1,
-            0.9782608695652174,
-            1
+            0.06521739130434782,
+            0.04838709677419355,
+            0.9130434782608695,
+            0.04838709677419355,
+            0.06521739130434782,
+            0.9838709677419355,
+            0.9130434782608695,
+            0.9838709677419355
           ],
           "minPos": [
-            -44,
-            -61,
+            -19.5,
+            -29,
             0
           ],
           "maxPos": [
-            44,
-            61,
+            19.5,
+            29,
             0
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "e202340b-ecb9-4bf5-a0ab-e5e2f3824e85@6c48a",
+        "imageUuidOrDatabaseUri": "0d874f54-8d67-423f-9398-509ecc542cab@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "e202340b-ecb9-4bf5-a0ab-e5e2f3824e85@6c48a",
+    "redirect": "0d874f54-8d67-423f-9398-509ecc542cab@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "59lsoxGhhG8rrxGUjFZFDM"

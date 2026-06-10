@@ -98,8 +98,8 @@
     },
     "_lpos": {
       "__type__": "cc.Vec3",
-      "x": 0,
-      "y": 0,
+      "x": 0.9744680851063827,
+      "y": -1.8127659574468074,
       "z": 0
     },
     "_lrot": {
@@ -139,8 +139,8 @@
     },
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 234,
-      "height": 174
+      "width": 213.84227388482708,
+      "height": 155.52222130945532
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -165,7 +165,10 @@
     "__prefab": {
       "__id__": 6
     },
-    "_customMaterial": null,
+    "_customMaterial": {
+      "__uuid__": "e3b5d001-d67b-4af5-a645-8e7429d06539",
+      "__expectedType__": "cc.Material"
+    },
     "_srcBlendFactor": 2,
     "_dstBlendFactor": 4,
     "_color": {
@@ -176,7 +179,7 @@
       "a": 255
     },
     "_spriteFrame": {
-      "__uuid__": "0cacb686-4b09-4d4c-b852-5a454f8195ee@f9941",
+      "__uuid__": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde@f9941",
       "__expectedType__": "cc.SpriteFrame"
     },
     "_type": 0,
@@ -189,7 +192,7 @@
     },
     "_fillStart": 0,
     "_fillRange": 0,
-    "_isTrimmedMode": true,
+    "_isTrimmedMode": false,
     "_useGrayscale": false,
     "_atlas": null,
     "_id": ""

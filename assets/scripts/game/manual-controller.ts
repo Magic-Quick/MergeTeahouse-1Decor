@@ -1,4 +1,20 @@
-import { _decorator, Animation, assetManager, Color, Component, Material, Node, ParticleSystem2D, Sprite, SpriteFrame, tween, Tween, UITransform, Vec3 } from 'cc';
+import {
+    _decorator,
+    Animation,
+    AnimationClip,
+    assetManager,
+    Color,
+    Component,
+    Material,
+    Node,
+    ParticleSystem2D,
+    Sprite,
+    SpriteFrame,
+    tween,
+    Tween,
+    UITransform,
+    Vec3,
+} from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import {
     EVT_CHEST_TAPPED,
@@ -12,14 +28,16 @@ import { HintDragGhost } from 'db://assets/scripts/game/hint-drag-ghost';
 
 const { ccclass, property } = _decorator;
 
-/** assets/materials/SpriteContourGlow.mtl */
-const HINT_GHOST_CONTOUR_MATERIAL_UUID = 'e8a4c3f2-5b6d-4f7a-8e2d-4f9b0c1d3e5a';
-/** assets/materials/SpriteSolidFill.mtl — запасной fallback */
-const HINT_GHOST_GLOW_MATERIAL_UUID = 'd5f9b2e3-0c4e-5f7b-9a2d-3e6f8b0c1d4e';
 /** assets/materials/materialLight-001.mtl */
 const HINT_GHOST_ADDITIVE_MATERIAL_UUID = 'e3b5d001-d67b-4af5-a645-8e7429d06539';
 /** assets/sprites/fx/LightCircle.png */
 const HINT_GHOST_SOFT_FRAME_UUID = 'ba870ec6-c1bd-4e05-97fa-534676ac6225@f9941';
+/** assets/animations/TapForMoreFurnitureText.anim */
+const BOX_HINT_TEXT_ANIM_UUID = 'bea6a641-0b16-4b18-915f-3ac0dac61d62';
+/** assets/animations/BoxShake.anim */
+const BOX_HINT_SHAKE_ANIM_UUID = '901637c0-d295-46d1-84c9-e318e5283f23';
+/** assets/animations/BoxJump.anim */
+const BOX_HINT_JUMP_ANIM_UUID = '7c0795a1-0fcc-4a84-8677-9d7ae1f10313';
 /** Лимит emissionRate для подсказок — в префабе 300, полный rate вешает превью */
 const HINT_PARTICLE_MAX_EMISSION = 120;
 /** Значение из ParticleHit / ParticleBox, если в кэш попал 0 после stopSystem */
@@ -43,7 +61,7 @@ interface SpawnedHintTarget {
 
 /**
  * Tutorial hints:
- * 1. Tap the box at start and again when all spawned items are placed but the game continues.
+ * 1. Tap the box: shake+hand+jump at start; hand+jump on later box hints.
  * 2. Drag the first spawned item to its hologram if the player waits too long.
  * 3. Idle placement hint for any unplaced spawned item.
  */
@@ -66,6 +84,30 @@ export class ManualController extends Component {
 
     @property({ tooltip: 'Повтор подсказки на коробку, сек' })
     boxHintRepeatDelay: number = 3;
+
+    @property({
+        type: Node,
+        tooltip: 'Нода «Tap for more furniture». Скрыта в начале; анимация вместе с HandTap у коробки.',
+    })
+    boxHintTextNode: Node | null = null;
+
+    @property({
+        type: AnimationClip,
+        tooltip: 'Animation-клип текста коробочной подсказки (TapForMoreFurnitureText.anim). Пусто — подгрузка.',
+    })
+    boxHintTextAnimClip: AnimationClip | null = null;
+
+    @property({
+        type: AnimationClip,
+        tooltip: 'Тряска коробки перед первой подсказкой (BoxShake.anim). До первого тапа по коробке. Пусто — подгрузка.',
+    })
+    boxHintShakeAnimClip: AnimationClip | null = null;
+
+    @property({
+        type: AnimationClip,
+        tooltip: 'Прыжок коробки после подсказки рукой (BoxJump.anim). Пусто — подгрузка.',
+    })
+    boxHintJumpAnimClip: AnimationClip | null = null;
 
     @property({ tooltip: 'Задержка перед подсказкой перетаскивания первого предмета, сек' })
     dragHintDelay: number = 3;
@@ -91,7 +133,7 @@ export class ManualController extends Component {
     @property({ tooltip: 'Локальное смещение копии предмета под пальцем (от UiHand)' })
     hintGhostLocalOffset: Vec3 = new Vec3(35, -130, 0);
 
-    @property({ tooltip: 'Круглая текстура (BlurCircle). Выключено = свечение по форме предмета (SpriteContourGlow).' })
+    @property({ tooltip: 'Круглая текстура BlurCircle. Выключено = glow-текстура предмета (SpriteGlow).' })
     hintGhostSoftGlow: boolean = false;
 
     @property({
@@ -100,20 +142,11 @@ export class ManualController extends Component {
     })
     hintGhostSoftGlowSpriteFrame: SpriteFrame | null = null;
 
-    @property({ type: Material, tooltip: 'Аддитивный материал свечения (materialLight-001). Пусто — подгрузка.' })
+    @property({
+        type: Material,
+        tooltip: 'Аддитивный материал на glow-слоях hint ghost (materialLight-001). Работает и с glow-текстурой предмета. Пусто — подгрузка.',
+    })
     hintGhostGlowAdditiveMaterial: Material | null = null;
-
-    @property({ type: Material, tooltip: 'Свечение по контуру: SpriteContourGlow. Пусто — подгрузка.' })
-    hintGhostContourGlowMaterial: Material | null = null;
-
-    @property({ type: Material, tooltip: 'Запасной fallback: SpriteSolidFill (чёткие слои, без размытия)' })
-    hintGhostGlowMaterial: Material | null = null;
-
-    @property({ tooltip: 'Мягкость размытия контура (0–1), для SpriteContourGlow' })
-    hintGhostGlowSoftness: number = 0.65;
-
-    @property({ tooltip: 'Яркость ореола (0–2), для SpriteContourGlow' })
-    hintGhostGlowIntensity: number = 1.2;
 
     @property({ tooltip: 'Цвет заливки свечения (RGB)' })
     hintGhostGlowColor: Color = new Color(255, 214, 72, 255);
@@ -121,11 +154,8 @@ export class ManualController extends Component {
     @property({ tooltip: 'Прозрачность свечения (0–255)' })
     hintGhostGlowAlpha: number = 150;
 
-    @property({ tooltip: 'Ширина ореола: для контура — радиус размытия; для круга — масштаб текстуры (1.2–1.6).' })
-    hintGhostGlowOuterScale: number = 1.38;
-
-    @property({ tooltip: 'Только для круглой текстуры / fallback-слоёв (2–5)' })
-    hintGhostBlurLayers: number = 4;
+    @property({ tooltip: 'Сколько одинаковых glow-слоёв наложить в drag-хинте (2 = удвоение яркости). 1–20.' })
+    hintGhostGlowLayers: number = 2;
 
     private _unsubs: Array<() => void> = [];
     private _gameCompleted: boolean = false;
@@ -143,6 +173,10 @@ export class ManualController extends Component {
     private _handSprite: Sprite | null = null;
     private _handSpriteDefaultColor: Color | null = null;
     private _handTapOnComplete: (() => void) | null = null;
+    private _boxHintTextAnim: Animation | null = null;
+    private _boxHintAnim: Animation | null = null;
+    private _boxOpenedOnce = false;
+    private _boxHintAnimOnComplete: (() => void) | null = null;
     private _particleFadeToken = 0;
     private _scheduledParticleFade: (() => void) | null = null;
     /** Частицы инициализируются лениво — не в onLoad, чтобы не блокировать старт превью */
@@ -151,6 +185,8 @@ export class ManualController extends Component {
     /** Клон из коробки, скрытый на время drag-подсказки (под пальцем показывается HintItemGhost) */
     private _hintGhostHiddenClone: Node | null = null;
     private _hintGhostVisualItem: DraggableItem | null = null;
+    /** Колбэк повтора drag/placement-хинта — вызывается и при штатном завершении, и при прерывании tween. */
+    private _handPathHintOnComplete: (() => void) | null = null;
     private readonly _uiHandDefaultLocalPos = new Vec3();
     private readonly _uiHandDefaultLocalEuler = new Vec3();
     private readonly _uiHandDefaultLocalScale = new Vec3(1, 1, 1);
@@ -179,6 +215,7 @@ export class ManualController extends Component {
         this._scheduledParticleFade = null;
         this._particleFadeToken++;
         this._handTapOnComplete = null;
+        this._stopBoxHintAnim();
         const anim = this._getHandAnimation();
         anim?.off(Animation.EventType.FINISHED, this._onHandTapAnimFinished, this);
         if (this.uiHand?.isValid) {
@@ -191,7 +228,9 @@ export class ManualController extends Component {
     }
 
     private _onChestTapped(): void {
+        this._boxOpenedOnce = true;
         this.unschedule(this._showBoxHint);
+        this._stopBoxHintAnim();
         this._hideHand();
     }
 
@@ -213,11 +252,16 @@ export class ManualController extends Component {
             this._schedulePlacementIdleHint(this.placementIdleDelay);
         }
 
-        if (this._dragStepDone || this._firstClone) return;
+        if (this._dragStepDone) return;
 
-        this._firstItem = event.item;
-        this._firstClone = event.clone;
-        this._scheduleDragHint(this.dragHintDelay);
+        if (!this._firstClone) {
+            this._firstItem = event.item;
+            this._firstClone = event.clone;
+        }
+
+        if (this._firstClone?.isValid && this._firstItem && !this._firstItem.isPlaced) {
+            this._scheduleDragHint(this.dragHintDelay);
+        }
     }
 
     private _onItemDragStart(): void {
@@ -232,7 +276,9 @@ export class ManualController extends Component {
     private _onItemPlaced(event: ItemPlacedEvent): void {
         this._spawnedHintTargets = this._spawnedHintTargets.filter(({ item, clone }) => {
             if (event.item && item === event.item) return false;
-            return !!clone && clone.isValid && clone.active && !item.isPlaced;
+            if (!clone?.isValid || item.isPlaced) return false;
+            if (clone.active) return true;
+            return clone === this._hintGhostHiddenClone;
         });
         if (event.item && this._firstItem === event.item) {
             this._firstItem = null;
@@ -263,14 +309,142 @@ export class ManualController extends Component {
     }
 
     private _showBoxHint(): void {
-        if (this._gameCompleted || !this.uiHand?.isValid || !this.boxNode?.isValid) return;
+        if (this._gameCompleted || !this.boxNode?.isValid) return;
         if (this._getAvailablePlacementTargets().length > 0) return;
 
-        this._prepareHandAt(this.boxNode.worldPosition, 'box');
-        this._playHandTap(this._onBoxHandTapCycleEnd);
+        if (!this._boxOpenedOnce) {
+            this._playBoxIntroBeforeHint();
+            return;
+        }
+
+        this._showBoxHandHint(this._onBoxHandTapBeforeJump);
+    }
+
+    private _showBoxHandHint(onHandTapComplete?: () => void): void {
+        if (this._gameCompleted || !this.uiHand?.isValid || !this.boxNode?.isValid) return;
+
+        this._prepareHandForBoxHint();
+        this._showBoxHintText();
+        // HandTap задаёт локальную позу из клипа — показываем спрайт после старта, без кадра в центре коробки.
+        this._playHandTap(onHandTapComplete ?? this._onBoxHandTapCycleEnd, false);
+    }
+
+    private _playBoxIntroBeforeHint(): void {
+        if (!this.boxNode?.isValid) {
+            this._showBoxHandHint(this._onBoxHandTapBeforeJump);
+            return;
+        }
+
+        this._resolveBoxShakeClip(
+            (shakeClip) => {
+                this._playBoxHintClip(shakeClip, () => {
+                    this._showBoxHandHint(this._onBoxHandTapBeforeJump);
+                });
+            },
+            () => this._showBoxHandHint(this._onBoxHandTapBeforeJump),
+        );
+    }
+
+    private _onBoxHandTapBeforeJump = (): void => {
+        this._hideBoxHintText();
+        this._setHandVisualVisible(false);
+        this._clearHandTapCompletion();
+        if (this.uiHand?.isValid) {
+            this.uiHand.active = false;
+        }
+
+        this._resolveBoxJumpClip(
+            (jumpClip) => {
+                this._playBoxHintClip(jumpClip, () => this._onBoxHandTapCycleEnd());
+            },
+            () => this._onBoxHandTapCycleEnd(),
+        );
+    };
+
+    private _playBoxHintClip(clip: AnimationClip, onComplete: () => void): void {
+        const anim = this._getBoxHintAnimation();
+        if (!anim) {
+            onComplete();
+            return;
+        }
+
+        this._stopBoxHintAnim();
+
+        const clipName = clip.name;
+        if (!anim.clips.some((existing) => existing === clip || existing?.name === clipName)) {
+            anim.addClip(clip, clipName);
+        }
+
+        this._boxHintAnimOnComplete = onComplete;
+        anim.once(Animation.EventType.FINISHED, this._onBoxHintAnimFinished, this);
+
+        const state = anim.getState(clipName);
+        if (state) {
+            state.wrapMode = 1;
+            state.repeatCount = 1;
+        }
+        anim.play(clipName);
+    }
+
+    private _onBoxHintAnimFinished = (): void => {
+        const onComplete = this._boxHintAnimOnComplete;
+        this._boxHintAnimOnComplete = null;
+        onComplete?.();
+    };
+
+    private _stopBoxHintAnim(): void {
+        const anim = this._getBoxHintAnimation();
+        anim?.off(Animation.EventType.FINISHED, this._onBoxHintAnimFinished, this);
+        this._boxHintAnimOnComplete = null;
+        anim?.stop();
+    }
+
+    private _getBoxHintAnimation(): Animation | null {
+        if (this._boxHintAnim?.isValid) {
+            return this._boxHintAnim;
+        }
+        if (!this.boxNode?.isValid) {
+            return null;
+        }
+
+        this._boxHintAnim = this.boxNode.getComponent(Animation);
+        return this._boxHintAnim;
+    }
+
+    private _resolveBoxShakeClip(onReady: (clip: AnimationClip) => void, onMissing?: () => void): void {
+        if (this.boxHintShakeAnimClip?.isValid) {
+            onReady(this.boxHintShakeAnimClip);
+            return;
+        }
+
+        assetManager.loadAny({ uuid: BOX_HINT_SHAKE_ANIM_UUID }, (err, asset) => {
+            if (err || !asset) {
+                (onMissing ?? (() => this._showBoxHandHint(this._onBoxHandTapBeforeJump)))();
+                return;
+            }
+            this.boxHintShakeAnimClip = asset as AnimationClip;
+            onReady(this.boxHintShakeAnimClip);
+        });
+    }
+
+    private _resolveBoxJumpClip(onReady: (clip: AnimationClip) => void, onMissing?: () => void): void {
+        if (this.boxHintJumpAnimClip?.isValid) {
+            onReady(this.boxHintJumpAnimClip);
+            return;
+        }
+
+        assetManager.loadAny({ uuid: BOX_HINT_JUMP_ANIM_UUID }, (err, asset) => {
+            if (err || !asset) {
+                (onMissing ?? (() => this._onBoxHandTapCycleEnd()))();
+                return;
+            }
+            this.boxHintJumpAnimClip = asset as AnimationClip;
+            onReady(this.boxHintJumpAnimClip);
+        });
     }
 
     private _onBoxHandTapCycleEnd = (): void => {
+        this._hideBoxHintText();
         this._fadeParticlesAfterBoxHint();
         this._scheduleBoxHint(this.boxHintRepeatDelay + this.handParticleFadeDelay);
     };
@@ -283,7 +457,13 @@ export class ManualController extends Component {
 
     private _showDragHint(): void {
         if (this._dragStepDone || !this.uiHand?.isValid || !this._firstClone || !this._firstItem) return;
-        if (!this._firstClone.isValid || !this._firstClone.active || this._firstItem.isPlaced) return;
+
+        if (!this._firstClone.isValid || this._firstItem.isPlaced) return;
+
+        if (!this._firstClone.active && this._firstClone !== this._hintGhostHiddenClone) {
+            this._scheduleDragHint(0.5);
+            return;
+        }
 
         this._playDragPathHint(this._firstClone, this._firstItem, () => {
             this._scheduleDragHint(this.dragHintRepeatDelay);
@@ -300,7 +480,10 @@ export class ManualController extends Component {
         if (!this._dragStepDone || !this.uiHand) return;
 
         const target = this._pickRandomPlacementTarget();
-        if (!target) return;
+        if (!target) {
+            this._schedulePlacementIdleHint(1);
+            return;
+        }
 
         this._playInstallPathHint(target.item, target.clone, () => {
             this._schedulePlacementIdleHint(this.placementIdleRepeatDelay);
@@ -325,15 +508,20 @@ export class ManualController extends Component {
         this._prepareHandAt(startPos, 'hand');
         this._showHintGhost(item, clone);
 
+        const finishPathHint = () => onComplete?.();
+        this._handPathHintOnComplete = finishPathHint;
+
         tween(this.uiHand!)
             .delay(0.2)
+            .call(() => this.uiHand?.setWorldPosition(startPos))
             .to(this.dragHintMoveDuration, { worldPosition: targetPos }, {
                 easing: 'quadInOut',
                 onUpdate: () => this._hintDragGhost.syncFollow(),
             })
             .call(() => {
+                this._handPathHintOnComplete = null;
                 this._hideHand();
-                onComplete?.();
+                finishPathHint();
             })
             .start();
     }
@@ -348,61 +536,29 @@ export class ManualController extends Component {
         );
         this._hintDragGhost.useSoftGlow = this.hintGhostSoftGlow;
         this._hintDragGhost.glowSoftSpriteFrame = this.hintGhostSoftGlowSpriteFrame;
-        this._hintDragGhost.glowLayerCount = this.hintGhostBlurLayers;
-        this._hintDragGhost.glowOuterScale = this.hintGhostGlowOuterScale;
         this._hintDragGhost.glowAdditiveMaterial = this.hintGhostGlowAdditiveMaterial;
-        this._hintDragGhost.glowContourMaterial = this.hintGhostContourGlowMaterial;
-        this._hintDragGhost.glowRadius = this._resolveHintGlowRadius();
-        this._hintDragGhost.glowSoftness = this.hintGhostGlowSoftness;
-        this._hintDragGhost.glowIntensity = this.hintGhostGlowIntensity;
-        this._hintDragGhost.glowMaterial = this.hintGhostGlowMaterial;
-    }
-
-    /** Outer Scale 1.0–1.6 → UV-радиус размытия контура */
-    private _resolveHintGlowRadius(): number {
-        const scale = Math.max(1, this.hintGhostGlowOuterScale);
-        return 0.035 + (scale - 1) * 0.09;
+        this._hintDragGhost.glowLayerCount = this.hintGhostGlowLayers;
     }
 
     private _ensureHintGhostAssets(): void {
         this._syncHintGhostSettings();
 
-        if (this.hintGhostSoftGlow) {
-            if (!this.hintGhostGlowAdditiveMaterial) {
-                assetManager.loadAny({ uuid: HINT_GHOST_ADDITIVE_MATERIAL_UUID }, (err, asset) => {
-                    if (!err && asset) {
-                        this.hintGhostGlowAdditiveMaterial = asset as Material;
-                        this._syncHintGhostSettings();
-                        this._refreshActiveHintGhost();
-                    }
-                });
-            }
-            if (!this.hintGhostSoftGlowSpriteFrame && !this._hintDragGhost.glowSoftSpriteFrame) {
-                assetManager.loadAny({ uuid: HINT_GHOST_SOFT_FRAME_UUID }, (err, asset) => {
-                    if (!err && asset) {
-                        this._hintDragGhost.glowSoftSpriteFrame = asset as SpriteFrame;
-                        this._refreshActiveHintGhost();
-                    }
-                });
-            }
-            return;
-        }
-
-        if (!this.hintGhostContourGlowMaterial) {
-            assetManager.loadAny({ uuid: HINT_GHOST_CONTOUR_MATERIAL_UUID }, (err, asset) => {
+        if (!this.hintGhostGlowAdditiveMaterial) {
+            assetManager.loadAny({ uuid: HINT_GHOST_ADDITIVE_MATERIAL_UUID }, (err, asset) => {
                 if (!err && asset) {
-                    this.hintGhostContourGlowMaterial = asset as Material;
+                    this.hintGhostGlowAdditiveMaterial = asset as Material;
                     this._syncHintGhostSettings();
                     this._refreshActiveHintGhost();
                 }
             });
         }
 
-        if (!this.hintGhostGlowMaterial) {
-            assetManager.loadAny({ uuid: HINT_GHOST_GLOW_MATERIAL_UUID }, (err, asset) => {
+        if (!this.hintGhostSoftGlow) return;
+
+        if (!this.hintGhostSoftGlowSpriteFrame && !this._hintDragGhost.glowSoftSpriteFrame) {
+            assetManager.loadAny({ uuid: HINT_GHOST_SOFT_FRAME_UUID }, (err, asset) => {
                 if (!err && asset) {
-                    this.hintGhostGlowMaterial = asset as Material;
-                    this._syncHintGhostSettings();
+                    this._hintDragGhost.glowSoftSpriteFrame = asset as SpriteFrame;
                     this._refreshActiveHintGhost();
                 }
             });
@@ -419,10 +575,9 @@ export class ManualController extends Component {
     }
 
     private _refreshActiveHintGhost(): void {
-        if (!this._hintGhostHiddenClone?.isValid || !this._hintGhostVisualItem || !this.uiHand?.isValid) return;
         if (!this._hintDragGhost.isShowing()) return;
         this._syncHintGhostSettings();
-        this._hintDragGhost.showFromClone(this.uiHand, this._hintGhostVisualItem, this._hintGhostHiddenClone);
+        this._hintDragGhost.refreshMaterials();
     }
 
     private _hideHintGhost(withFade: boolean): void {
@@ -443,7 +598,7 @@ export class ManualController extends Component {
         clone.active = true;
     }
 
-    private _playHandTap(onComplete?: () => void): void {
+    private _playHandTap(onComplete?: () => void, showVisualImmediately = true): void {
         const anim = this._getHandAnimation();
         if (!anim) {
             onComplete?.();
@@ -458,8 +613,22 @@ export class ManualController extends Component {
             state.wrapMode = 1;
             state.repeatCount = 1;
         }
+
+        if (!showVisualImmediately) {
+            this._setHandVisualVisible(false);
+        }
+
         anim.play('HandTap');
+
+        if (!showVisualImmediately) {
+            this.scheduleOnce(this._revealHandVisualAfterTapStart, 0);
+        }
     }
+
+    private _revealHandVisualAfterTapStart = (): void => {
+        if (!this.uiHand?.isValid || !this.uiHand.active) return;
+        this._showHandVisual();
+    };
 
     private _onHandTapAnimFinished = (): void => {
         const onComplete = this._handTapOnComplete;
@@ -468,6 +637,7 @@ export class ManualController extends Component {
     };
 
     private _clearHandTapCompletion(): void {
+        this.unschedule(this._revealHandVisualAfterTapStart);
         const anim = this._getHandAnimation();
         anim?.off(Animation.EventType.FINISHED, this._onHandTapAnimFinished, this);
         this._handTapOnComplete = null;
@@ -476,6 +646,71 @@ export class ManualController extends Component {
     private _getHandAnimation(): Animation | null {
         if (!this.uiHand?.isValid) return null;
         return this.uiHand.getComponent(Animation);
+    }
+
+    private _hideBoxHintText(): void {
+        if (!this.boxHintTextNode?.isValid) return;
+
+        const anim = this._getBoxHintTextAnimation();
+        anim?.stop();
+        this.boxHintTextNode.active = false;
+    }
+
+    private _showBoxHintText(): void {
+        if (!this.boxHintTextNode?.isValid) return;
+
+        this.boxHintTextNode.active = true;
+        this._playBoxHintTextAnimation();
+    }
+
+    private _getBoxHintTextAnimation(): Animation | null {
+        if (this._boxHintTextAnim?.isValid) {
+            return this._boxHintTextAnim;
+        }
+        if (!this.boxHintTextNode?.isValid) {
+            return null;
+        }
+
+        let anim = this.boxHintTextNode.getComponent(Animation);
+        if (!anim) {
+            anim = this.boxHintTextNode.addComponent(Animation);
+        }
+        this._boxHintTextAnim = anim;
+        return anim;
+    }
+
+    private _resolveBoxHintTextClip(onReady: (clip: AnimationClip) => void): void {
+        if (this.boxHintTextAnimClip?.isValid) {
+            onReady(this.boxHintTextAnimClip);
+            return;
+        }
+
+        assetManager.loadAny({ uuid: BOX_HINT_TEXT_ANIM_UUID }, (err, asset) => {
+            if (err || !asset) return;
+            this.boxHintTextAnimClip = asset as AnimationClip;
+            onReady(this.boxHintTextAnimClip);
+        });
+    }
+
+    private _playBoxHintTextAnimation(): void {
+        const anim = this._getBoxHintTextAnimation();
+        if (!anim) return;
+
+        this._resolveBoxHintTextClip((clip) => {
+            if (!anim.isValid || !this.boxHintTextNode?.isValid || !this.boxHintTextNode.active) return;
+
+            const clipName = clip.name;
+            if (!anim.clips.some((existing) => existing === clip || existing?.name === clipName)) {
+                anim.addClip(clip, clipName);
+            }
+
+            const state = anim.getState(clipName);
+            if (state) {
+                state.wrapMode = 1;
+                state.repeatCount = 1;
+            }
+            anim.play(clipName);
+        });
     }
 
     /** Плавно гасит ParticleBox после цикла HandTap у коробки */
@@ -489,6 +724,8 @@ export class ManualController extends Component {
     }
 
     private _hideHand(deactivateHand = false): void {
+        this._stopBoxHintAnim();
+        this._hideBoxHintText();
         this._clearHandTapCompletion();
         this._stopHandTweens();
 
@@ -542,6 +779,10 @@ export class ManualController extends Component {
         if (this.uiHand?.isValid) {
             Tween.stopAllByTarget(this.uiHand);
         }
+
+        const onComplete = this._handPathHintOnComplete;
+        this._handPathHintOnComplete = null;
+        onComplete?.();
     }
 
     private _prepareHandAt(worldPos: Vec3, particleSource: 'hand' | 'box'): void {
@@ -552,11 +793,34 @@ export class ManualController extends Component {
         this._cancelParticleFade('box', true);
         this._activeParticleSource = particleSource;
         this._stopHandTweens();
+
+        // Сначала скрываем и сбрасываем HandTap, иначе один кадр видна старая поза/позиция.
+        this.uiHand.active = false;
+        this._setHandVisualVisible(false);
         this._resetHandTransformForPathHint();
-        this.uiHand.active = true;
         this.uiHand.setWorldPosition(worldPos);
+
+        this.uiHand.active = true;
         this._showHandVisual();
         this._startParticles(particleSource);
+    }
+
+    /** Подсказка на коробку: HandTap уже привязан к сцене локальными координатами, world snap не нужен. */
+    private _prepareHandForBoxHint(): void {
+        if (!this.uiHand?.isValid) return;
+        this._ensureParticlesReady();
+        this._particleFadeToken++;
+        this._cancelParticleFade('hand', true);
+        this._cancelParticleFade('box', true);
+        this._activeParticleSource = 'box';
+        this._stopHandTweens();
+
+        this.uiHand.active = false;
+        this._setHandVisualVisible(false);
+        this._resetHandTransformForPathHint();
+
+        this.uiHand.active = true;
+        this._startParticles('box');
     }
 
     private _resetHandAnimation(): void {
@@ -565,16 +829,41 @@ export class ManualController extends Component {
 
         this._clearHandTapCompletion();
         anim.stop();
+
+        const state = anim.getState('HandTap');
+        if (state) {
+            state.stop();
+            state.time = 0;
+            state.sample();
+        }
+
         // HandTap анимирует alpha спрайта: после stop() рука может остаться невидимой.
         this._restoreHandSpriteColor();
     }
 
     private _resetHandTransformForPathHint(): void {
         if (!this.uiHand?.isValid) return;
-        this._resetHandAnimation();
+        this._stopHandTapWithoutPose();
         this.uiHand.setPosition(this._uiHandDefaultLocalPos);
         this.uiHand.setRotationFromEuler(this._uiHandDefaultLocalEuler);
         this.uiHand.setScale(this._uiHandDefaultLocalScale);
+    }
+
+    /** Останавливает HandTap без sample(): иначе кадр 0 клипа перезаписывает позицию руки. */
+    private _stopHandTapWithoutPose(): void {
+        const anim = this._getHandAnimation();
+        if (!anim) return;
+
+        this._clearHandTapCompletion();
+        anim.stop();
+
+        const state = anim.getState('HandTap');
+        if (state) {
+            state.stop();
+            state.time = 0;
+        }
+
+        this._restoreHandSpriteColor();
     }
 
     private _cacheHandVisualParts(): void {
@@ -900,7 +1189,9 @@ export class ManualController extends Component {
 
     private _cleanupSpawnedHintTargets(): void {
         this._spawnedHintTargets = this._spawnedHintTargets.filter(({ item, clone }) => {
-            return !!item && !!clone && clone.isValid && clone.active && !item.isPlaced;
+            if (!item || !clone?.isValid || item.isPlaced) return false;
+            if (clone.active) return true;
+            return clone === this._hintGhostHiddenClone;
         });
     }
 }

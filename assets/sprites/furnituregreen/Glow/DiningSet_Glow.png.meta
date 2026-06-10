@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "0cacb686-4b09-4d4c-b852-5a454f8195ee",
+  "uuid": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "0cacb686-4b09-4d4c-b852-5a454f8195ee@6c48a",
+      "uuid": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde@6c48a",
       "displayName": "DiningSet_Glow",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "0cacb686-4b09-4d4c-b852-5a454f8195ee",
+        "imageUuidOrDatabaseUri": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,21 +34,21 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "0cacb686-4b09-4d4c-b852-5a454f8195ee@f9941",
+      "uuid": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde@f9941",
       "displayName": "DiningSet_Glow",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
         "trimThreshold": 1,
         "rotated": false,
-        "offsetX": -1,
-        "offsetY": 1.5,
+        "offsetX": -0.5,
+        "offsetY": 1,
         "trimX": 3,
         "trimY": 0,
-        "width": 226,
-        "height": 171,
-        "rawWidth": 234,
-        "rawHeight": 174,
+        "width": 110,
+        "height": 85,
+        "rawWidth": 117,
+        "rawHeight": 87,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -60,17 +60,17 @@
         "meshType": 0,
         "vertices": {
           "rawPosition": [
-            -113,
-            -85.5,
+            -55,
+            -42.5,
             0,
-            113,
-            -85.5,
+            55,
+            -42.5,
             0,
-            -113,
-            85.5,
+            -55,
+            42.5,
             0,
-            113,
-            85.5,
+            55,
+            42.5,
             0
           ],
           "indexes": [
@@ -83,37 +83,37 @@
           ],
           "uv": [
             3,
-            174,
-            229,
-            174,
+            87,
+            113,
+            87,
             3,
-            3,
-            229,
-            3
+            2,
+            113,
+            2
           ],
           "nuv": [
-            0.01282051282051282,
-            0.017241379310344827,
-            0.9786324786324786,
-            0.017241379310344827,
-            0.01282051282051282,
+            0.02564102564102564,
+            0.022988505747126436,
+            0.9658119658119658,
+            0.022988505747126436,
+            0.02564102564102564,
             1,
-            0.9786324786324786,
+            0.9658119658119658,
             1
           ],
           "minPos": [
-            -113,
-            -85.5,
+            -55,
+            -42.5,
             0
           ],
           "maxPos": [
-            113,
-            85.5,
+            55,
+            42.5,
             0
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "0cacb686-4b09-4d4c-b852-5a454f8195ee@6c48a",
+        "imageUuidOrDatabaseUri": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "0cacb686-4b09-4d4c-b852-5a454f8195ee@6c48a",
+    "redirect": "11f558b8-d9fd-4436-b7c2-1aa95e67bcde@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "59lsoxGhhG8rrxGUjFZFDM"

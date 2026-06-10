@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "fad184f3-37b4-474b-bdad-5ffb81a4601b",
+  "uuid": "a4ac26b2-999c-4e20-8a86-24d28e9aef7b",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "fad184f3-37b4-474b-bdad-5ffb81a4601b@6c48a",
+      "uuid": "a4ac26b2-999c-4e20-8a86-24d28e9aef7b@6c48a",
       "displayName": "TeaTableMini_Glow",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "fad184f3-37b4-474b-bdad-5ffb81a4601b",
+        "imageUuidOrDatabaseUri": "a4ac26b2-999c-4e20-8a86-24d28e9aef7b",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,21 +34,21 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "fad184f3-37b4-474b-bdad-5ffb81a4601b@f9941",
+      "uuid": "a4ac26b2-999c-4e20-8a86-24d28e9aef7b@f9941",
       "displayName": "TeaTableMini_Glow",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
         "trimThreshold": 1,
         "rotated": false,
-        "offsetX": 0,
+        "offsetX": -0.5,
         "offsetY": 0.5,
         "trimX": 4,
-        "trimY": 1,
-        "width": 95,
-        "height": 96,
-        "rawWidth": 103,
-        "rawHeight": 99,
+        "trimY": 2,
+        "width": 43,
+        "height": 45,
+        "rawWidth": 52,
+        "rawHeight": 50,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -60,17 +60,17 @@
         "meshType": 0,
         "vertices": {
           "rawPosition": [
-            -47.5,
-            -48,
+            -21.5,
+            -22.5,
             0,
-            47.5,
-            -48,
+            21.5,
+            -22.5,
             0,
-            -47.5,
-            48,
+            -21.5,
+            22.5,
             0,
-            47.5,
-            48,
+            21.5,
+            22.5,
             0
           ],
           "indexes": [
@@ -83,37 +83,37 @@
           ],
           "uv": [
             4,
-            98,
-            99,
-            98,
+            48,
+            47,
+            48,
             4,
-            2,
-            99,
-            2
+            3,
+            47,
+            3
           ],
           "nuv": [
-            0.038834951456310676,
-            0.020202020202020204,
-            0.9611650485436893,
-            0.020202020202020204,
-            0.038834951456310676,
-            0.98989898989899,
-            0.9611650485436893,
-            0.98989898989899
+            0.07692307692307693,
+            0.06,
+            0.9038461538461539,
+            0.06,
+            0.07692307692307693,
+            0.96,
+            0.9038461538461539,
+            0.96
           ],
           "minPos": [
-            -47.5,
-            -48,
+            -21.5,
+            -22.5,
             0
           ],
           "maxPos": [
-            47.5,
-            48,
+            21.5,
+            22.5,
             0
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "fad184f3-37b4-474b-bdad-5ffb81a4601b@6c48a",
+        "imageUuidOrDatabaseUri": "a4ac26b2-999c-4e20-8a86-24d28e9aef7b@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "fad184f3-37b4-474b-bdad-5ffb81a4601b@6c48a",
+    "redirect": "a4ac26b2-999c-4e20-8a86-24d28e9aef7b@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "59lsoxGhhG8rrxGUjFZFDM"

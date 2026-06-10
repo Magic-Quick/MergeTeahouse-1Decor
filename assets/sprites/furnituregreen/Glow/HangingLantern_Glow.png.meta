@@ -2,7 +2,7 @@
   "ver": "1.0.27",
   "importer": "image",
   "imported": true,
-  "uuid": "589b579d-0442-4d8b-a323-338cf537daaa",
+  "uuid": "5d400fb4-772d-4b11-81e1-da7ae48e3332",
   "files": [
     ".json",
     ".png"
@@ -10,14 +10,14 @@
   "subMetas": {
     "6c48a": {
       "importer": "texture",
-      "uuid": "589b579d-0442-4d8b-a323-338cf537daaa@6c48a",
+      "uuid": "5d400fb4-772d-4b11-81e1-da7ae48e3332@6c48a",
       "displayName": "HangingLantern_Glow",
       "id": "6c48a",
       "name": "texture",
       "userData": {
         "wrapModeS": "clamp-to-edge",
         "wrapModeT": "clamp-to-edge",
-        "imageUuidOrDatabaseUri": "589b579d-0442-4d8b-a323-338cf537daaa",
+        "imageUuidOrDatabaseUri": "5d400fb4-772d-4b11-81e1-da7ae48e3332",
         "isUuid": true,
         "visible": false,
         "minfilter": "linear",
@@ -34,21 +34,21 @@
     },
     "f9941": {
       "importer": "sprite-frame",
-      "uuid": "589b579d-0442-4d8b-a323-338cf537daaa@f9941",
+      "uuid": "5d400fb4-772d-4b11-81e1-da7ae48e3332@f9941",
       "displayName": "HangingLantern_Glow",
       "id": "f9941",
       "name": "spriteFrame",
       "userData": {
         "trimThreshold": 1,
         "rotated": false,
-        "offsetX": 2.5,
-        "offsetY": 0,
+        "offsetX": 1.5,
+        "offsetY": 0.5,
         "trimX": 5,
-        "trimY": 0,
-        "width": 63,
-        "height": 142,
-        "rawWidth": 68,
-        "rawHeight": 142,
+        "trimY": 1,
+        "width": 27,
+        "height": 68,
+        "rawWidth": 34,
+        "rawHeight": 71,
         "borderTop": 0,
         "borderBottom": 0,
         "borderLeft": 0,
@@ -60,17 +60,17 @@
         "meshType": 0,
         "vertices": {
           "rawPosition": [
-            -31.5,
-            -71,
+            -13.5,
+            -34,
             0,
-            31.5,
-            -71,
+            13.5,
+            -34,
             0,
-            -31.5,
-            71,
+            -13.5,
+            34,
             0,
-            31.5,
-            71,
+            13.5,
+            34,
             0
           ],
           "indexes": [
@@ -83,37 +83,37 @@
           ],
           "uv": [
             5,
-            142,
-            68,
-            142,
+            70,
+            32,
+            70,
             5,
-            0,
-            68,
-            0
+            2,
+            32,
+            2
           ],
           "nuv": [
-            0.07352941176470588,
-            0,
-            1,
-            0,
-            0.07352941176470588,
-            1,
-            1,
-            1
+            0.14705882352941177,
+            0.028169014084507043,
+            0.9411764705882353,
+            0.028169014084507043,
+            0.14705882352941177,
+            0.9859154929577465,
+            0.9411764705882353,
+            0.9859154929577465
           ],
           "minPos": [
-            -31.5,
-            -71,
+            -13.5,
+            -34,
             0
           ],
           "maxPos": [
-            31.5,
-            71,
+            13.5,
+            34,
             0
           ]
         },
         "isUuid": true,
-        "imageUuidOrDatabaseUri": "589b579d-0442-4d8b-a323-338cf537daaa@6c48a",
+        "imageUuidOrDatabaseUri": "5d400fb4-772d-4b11-81e1-da7ae48e3332@6c48a",
         "atlasUuid": "",
         "trimType": "auto"
       },
@@ -129,7 +129,7 @@
     "type": "sprite-frame",
     "fixAlphaTransparencyArtifacts": false,
     "hasAlpha": true,
-    "redirect": "589b579d-0442-4d8b-a323-338cf537daaa@6c48a",
+    "redirect": "5d400fb4-772d-4b11-81e1-da7ae48e3332@6c48a",
     "compressSettings": {
       "useCompressTexture": true,
       "presetId": "59lsoxGhhG8rrxGUjFZFDM"

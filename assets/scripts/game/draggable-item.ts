@@ -1,4 +1,7 @@
-import { _decorator, Component, Sprite, SpriteFrame, Vec3, Animation, Color, UITransform, ParticleSystem2D, Vec2 } from 'cc';
+import {
+    _decorator, Component, Sprite, SpriteFrame, Vec3, Animation, Color,
+    UITransform, ParticleSystem2D, Vec2,
+} from 'cc';
 import { GlobalEventBus } from 'db://assets/scripts/common/event-bus';
 import { EVT_PLAY_SOUND, SOUND_GROW, SOUND_WHOOSH } from 'db://assets/scripts/common/events';
 
@@ -50,12 +53,18 @@ export class DraggableItem extends Component {
     /** true — анимация HologrammPulse уже запущена */
     private _hologramPlaying: boolean = false;
 
-    /** ID предмета — берётся из имени назначенного спрайта */
+    /** ID предмета — имя ноды без суффикса _clone */
     get itemId(): string {
+        const name = this.node.name.replace(/_clone$/, '');
+        if (name && name !== 'DraggableItem') {
+            return name;
+        }
         return this.spriteComp?.spriteFrame?.name ?? '';
     }
 
     onLoad(): void {
+        this._setGlowVisible(false);
+
         // Запоминаем начальную world-позицию как целевую.
         // Используем scheduleOnce(0) чтобы дождаться полной инициализации иерархии сцены —
         // в onLoad() prefab-инстансы могут ещё не иметь корректных world-координат.
@@ -63,6 +72,22 @@ export class DraggableItem extends Component {
             this.targetWorldPos.set(this.node.worldPosition);
             console.log(`[DraggableItem] "${this.itemId}" target=(${this.targetWorldPos.x.toFixed(0)},${this.targetWorldPos.y.toFixed(0)})`);
         }, 0);
+    }
+
+    /** SpriteGlow — текстура ореола (скрыта по умолчанию, видна только в drag-хинте через HintDragGhost). */
+    getGlowSprite(): Sprite | null {
+        return this.node.getChildByName('SpriteGlow')?.getComponent(Sprite) ?? null;
+    }
+
+    setGlowVisible(visible: boolean): void {
+        this._setGlowVisible(visible);
+    }
+
+    private _setGlowVisible(visible: boolean): void {
+        const glowNode = this.node.getChildByName('SpriteGlow');
+        if (glowNode?.isValid) {
+            glowNode.active = visible;
+        }
     }
 
     /** Скрывает оригинал (вызывается из DragDropController.start()) */
