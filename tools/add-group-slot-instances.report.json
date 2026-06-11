@@ -1,0 +1,26 @@
+[
+  {
+    "instanceName": "Banner_Group",
+    "status": "skipped_has_glow"
+  },
+  {
+    "instanceName": "Case_Group",
+    "status": "skipped_has_glow"
+  },
+  {
+    "instanceName": "DiningSet_Group",
+    "status": "skipped_has_glow"
+  },
+  {
+    "instanceName": "PandaArch_Group",
+    "status": "skipped_no_glow_file"
+  },
+  {
+    "instanceName": "Sofa_Group",
+    "status": "skipped_has_glow"
+  },
+  {
+    "instanceName": "Swing_Group",
+    "status": "skipped_has_glow"
+  }
+]
