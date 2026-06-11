@@ -622,10 +622,7 @@ export class DragDropController extends Component {
 
         const validSerializedSlots = this.itemSlots.filter(slot => this._isValidItemSlot(slot));
         const slotsLayer = this._findChildDeep(this.node, 'Slots-layer');
-        const sceneItems = slotsLayer
-            ? slotsLayer.getComponentsInChildren(DraggableItem)
-                .filter(item => this._isValidDraggableItem(item) && item.node !== slotsLayer)
-            : [];
+        const sceneItems = this._collectActiveSlotItems(slotsLayer);
 
         if (sceneItems.length === 0) {
             this.itemSlots = validSerializedSlots;
@@ -633,10 +630,12 @@ export class DragDropController extends Component {
             return;
         }
 
-        const hasBrokenSerializedSlots = validSerializedSlots.length !== this.itemSlots.length;
-        const hasIncompleteSerializedSlots = validSerializedSlots.length < sceneItems.length;
+        const serializedItems = validSerializedSlots.map(slot => slot.item);
+        const needsResync = validSerializedSlots.length !== this.itemSlots.length
+            || sceneItems.length !== serializedItems.length
+            || sceneItems.some((item, index) => serializedItems[index] !== item);
 
-        if (hasBrokenSerializedSlots || hasIncompleteSerializedSlots) {
+        if (needsResync) {
             this.itemSlots = sceneItems.map(item => this._wrapItemSlot(item));
             this.currentIndex = 0;
             console.log(`[DragDropController] itemSlots восстановлен из Slots-layer: ${this.itemSlots.length}`);
@@ -644,6 +643,19 @@ export class DragDropController extends Component {
         }
 
         this.itemSlots = validSerializedSlots;
+    }
+
+    /** Активные DraggableItem — прямые дети Slots-layer в порядке иерархии */
+    private _collectActiveSlotItems(slotsLayer: Node | null): DraggableItem[] {
+        if (!slotsLayer) return [];
+
+        const items: DraggableItem[] = [];
+        for (const child of slotsLayer.children) {
+            const item = child.getComponent(DraggableItem);
+            if (!this._isValidDraggableItem(item) || !child.active) continue;
+            items.push(item);
+        }
+        return items;
     }
 
     /** Старые сцены могли хранить в itemSlots ссылки на DraggableItem напрямую */

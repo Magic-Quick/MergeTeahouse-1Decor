@@ -1,0 +1,229 @@
+{
+  "active": [
+    {
+      "name": "Carpet",
+      "nodeId": 109
+    },
+    {
+      "name": "Screen",
+      "nodeId": 215
+    },
+    {
+      "name": "Cabinet",
+      "nodeId": 426
+    },
+    {
+      "name": "PandaArch_Group",
+      "nodeId": 582
+    },
+    {
+      "name": "PandaPot",
+      "nodeId": 835
+    },
+    {
+      "name": "Screen",
+      "nodeId": 887
+    },
+    {
+      "name": "Swing_Group",
+      "nodeId": 940
+    },
+    {
+      "name": "Case_Group",
+      "nodeId": 1043
+    },
+    {
+      "name": "TeaShelf",
+      "nodeId": 1203
+    },
+    {
+      "name": "PandaPot",
+      "nodeId": 1350
+    },
+    {
+      "name": "Banner_Group",
+      "nodeId": 1560
+    },
+    {
+      "name": "DiningSet_Group",
+      "nodeId": 1611
+    },
+    {
+      "name": "Sofa_Group",
+      "nodeId": 1665
+    },
+    {
+      "name": "TeaSet",
+      "nodeId": 1719
+    }
+  ],
+  "inactive": [
+    {
+      "name": "Carpet",
+      "nodeId": 163
+    },
+    {
+      "name": "FlowerTable",
+      "nodeId": 267
+    },
+    {
+      "name": "Swing",
+      "nodeId": 319
+    },
+    {
+      "name": "Banner",
+      "nodeId": 372
+    },
+    {
+      "name": "DiningSet",
+      "nodeId": 478
+    },
+    {
+      "name": "PandaArch",
+      "nodeId": 530
+    },
+    {
+      "name": "Fan",
+      "nodeId": 625
+    },
+    {
+      "name": "FanDown",
+      "nodeId": 676
+    },
+    {
+      "name": "LampStand",
+      "nodeId": 730
+    },
+    {
+      "name": "Lantern",
+      "nodeId": 783
+    },
+    {
+      "name": "Case",
+      "nodeId": 991
+    },
+    {
+      "name": "Shelf",
+      "nodeId": 1097
+    },
+    {
+      "name": "Sofa",
+      "nodeId": 1151
+    },
+    {
+      "name": "HangingLantern",
+      "nodeId": 1245
+    },
+    {
+      "name": "TeaTable",
+      "nodeId": 1297
+    },
+    {
+      "name": "Bamboo",
+      "nodeId": 1399
+    },
+    {
+      "name": "TeaTableMini",
+      "nodeId": 1451
+    },
+    {
+      "name": "Mat",
+      "nodeId": 1506
+    }
+  ],
+  "removed": [
+    {
+      "name": "Carpet",
+      "nodeId": 163,
+      "slotIndex": 1
+    },
+    {
+      "name": "FlowerTable",
+      "nodeId": 267,
+      "slotIndex": 3
+    },
+    {
+      "name": "Swing",
+      "nodeId": 319,
+      "slotIndex": 4
+    },
+    {
+      "name": "Banner",
+      "nodeId": 372,
+      "slotIndex": 6
+    },
+    {
+      "name": "DiningSet",
+      "nodeId": 478,
+      "slotIndex": 8
+    },
+    {
+      "name": "PandaArch",
+      "nodeId": 530,
+      "slotIndex": 9
+    },
+    {
+      "name": "Fan",
+      "nodeId": 625,
+      "slotIndex": 10
+    },
+    {
+      "name": "FanDown",
+      "nodeId": 676,
+      "slotIndex": 11
+    },
+    {
+      "name": "LampStand",
+      "nodeId": 730,
+      "slotIndex": 12
+    },
+    {
+      "name": "Lantern",
+      "nodeId": 783,
+      "slotIndex": 13
+    },
+    {
+      "name": "Case",
+      "nodeId": 991,
+      "slotIndex": 16
+    },
+    {
+      "name": "Shelf",
+      "nodeId": 1097,
+      "slotIndex": 17
+    },
+    {
+      "name": "Sofa",
+      "nodeId": 1151,
+      "slotIndex": 18
+    },
+    {
+      "name": "HangingLantern",
+      "nodeId": 1245,
+      "slotIndex": 20
+    },
+    {
+      "name": "TeaTable",
+      "nodeId": 1297,
+      "slotIndex": 21
+    },
+    {
+      "name": "Bamboo",
+      "nodeId": 1399,
+      "slotIndex": 22
+    },
+    {
+      "name": "TeaTableMini",
+      "nodeId": 1451,
+      "slotIndex": 23
+    },
+    {
+      "name": "Mat",
+      "nodeId": 1506,
+      "slotIndex": 24
+    }
+  ],
+  "added": [],
+  "finalCount": 14,
+  "orphanSlotIds": []
+}
